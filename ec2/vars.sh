@@ -1,1 +1,0 @@
-EC2_STACK_NAME=test-ec2
