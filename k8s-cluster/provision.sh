@@ -26,7 +26,7 @@ else
 fi
 
 #### Varible Initialization
-echo "EC2_STACK_NAME=$2-ec2" >vars.sh
+echo "EC2_STACK_NAME=$2-k8s" >vars.sh
 source vars.sh
 set -ex
 

@@ -69,8 +69,9 @@ Resources:
             cp -i /etc/kubernetes/admin.conf /root/.kube/config
             chown $(id -u):$(id -g) /root/.kube/config
             export KUBECONFIG=/etc/kubernetes/admin.conf
-            sleep 200
+            sleep 100
             kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+            sleep 100
             kubectl get nodes
 
   Workernode1:
