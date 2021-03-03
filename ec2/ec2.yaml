@@ -40,6 +40,9 @@ Resources:
             rpm -import https://pkg.jenkins.io/redhat/jenkins.io.key
             yum install -y jenkins
             service jenkins start
+            service firewalld stop
+            systemctl disable firewalld.service
+            sed -i -e 's/SELINUX=enforcing/SELINUX=disabled/g' -e 's/SELINUX=permissive/SELINUX=disabled/g' /etc/selinux/config
 
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup

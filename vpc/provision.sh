@@ -27,7 +27,8 @@ then
     test_var "$PUBLIC_SUBNET_CIDR"
     read -p "Enter the PRIVATE_SUBNET_CIDR Eg:"10.0.100.0/24,10.0.200.0/24": " PRIVATE_SUBNET_CIDR
     test_var "$PRIVATE_SUBNET_CIDR"
-    echo -e '\n \t' "Executing Stack"
+    echo  "Executing Stack"
+    echo ""
 else
     usage
     exit
