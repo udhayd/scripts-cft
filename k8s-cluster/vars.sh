@@ -1,0 +1,1 @@
+EC2_STACK_NAME=apps-k8s
