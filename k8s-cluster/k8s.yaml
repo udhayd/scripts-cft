@@ -61,10 +61,14 @@ Resources:
             net.bridge.bridge-nf-call-ip6tables = 1
             net.bridge.bridge-nf-call-iptables = 1
             EOF
+            setenforce 0
+            sed -i ‘s/^SELINUX=enforcing$/SELINUX=permissive/’ /etc/selinux/config
+            sed -i '/swap/d' /etc/fstab
+            swapoff -a
             sysctl --system
             yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
             systemctl enable kubelet && systemctl start kubelet
-            kubeadm init 
+            kubeadm init --pod-network-cidr=10.244.0.0/16
             mkdir -p /root/.kube
             cp -i /etc/kubernetes/admin.conf /root/.kube/config
             chown $(id -u):$(id -g) /root/.kube/config
