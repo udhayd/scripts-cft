@@ -1,3 +1,2 @@
-./vpc/vars.sh
-./ec2/vars.sh
-./k8s-cluster/vars.sh
+./*/vars.sh
+./.gitignore
