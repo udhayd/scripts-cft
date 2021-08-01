@@ -104,13 +104,16 @@ Resources:
             grep 'discovery-token-ca-cert-hash' /root/bootstrap.log >>/tmp/$$.log
             d=$(cat /tmp/$$.log)
             echo $d >/tmp/$$.sh
-            # D=$(/tmp/$$.sh)
             mkdir -p /srv/salt/base/scripts
             cp /tmp/$$.sh /srv/salt/base/scripts/file.sh
             salt 'k8s-worker1' cmd.script salt://scripts/file.sh
             salt 'k8s-worker2' cmd.script salt://scripts/file.sh
             sleep 30
             kubectl get nodes
+            #### Helm Installation
+            curl -s https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3|bash
+            echo 'Enf of Task'
+
 
   Workernode1:
     Type: AWS::EC2::Instance
@@ -248,6 +251,9 @@ Resources:
         Fn::Sub: "${AWS::StackName} SG"
       VpcId:
         Fn::ImportValue: MyVPCID
+      SecurityGroupIngress:
+      - IpProtocol: -1
+        CidrIp: 0.0.0.0/0
   SGIngress:
     Type: 'AWS::EC2::SecurityGroupIngress'
     Properties:

@@ -10,10 +10,10 @@ Parameters:
 Mappings: 
   MInstanceMap: 
     Instancetype: 
-      dev: "t2.medium"
-      test: "t2.medium"
-      uat: "t2.medium"
-      prod: "t2.medium"
+      dev: "t2.small"
+      test: "t2.small"
+      uat: "t2.small"
+      prod: "t2.small"
   WInstanceMap: 
     Instancetype: 
       dev: "t2.micro"
@@ -65,11 +65,12 @@ Resources:
             aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep running>/tmp/$$
             cat /tmp/$$|awk '{print $1, " " , $2}' >>/etc/hosts
             salt-minion -d;salt-master -d
-            sleep 100
+            sleep 60
             kill -9 $(pgrep salt-minion) $(pgrep salt-master)
             salt-minion -d;salt-master -d
-            sleep 100
+            sleep 60
             echo "Y"|salt-key -A
+            echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root;systemctl restart crond
 
 
   Minion1:
@@ -111,6 +112,7 @@ Resources:
             aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep running>/tmp/$$
             cat /tmp/$$|awk '{print $1, " " , $2}' >>/etc/hosts
             salt-minion -d
+            echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root;systemctl restart crond
 
   Minion2:
     Type: AWS::EC2::Instance
@@ -151,6 +153,7 @@ Resources:
             aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep running>/tmp/$$
             cat /tmp/$$|awk '{print $1, " " , $2}' >>/etc/hosts
             salt-minion -d
+            echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root;systemctl restart crond
 
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -161,6 +164,9 @@ Resources:
         Fn::Sub: "${AWS::StackName} SG"
       VpcId:
         Fn::ImportValue: MyVPCID
+      SecurityGroupIngress:
+      - IpProtocol: -1
+        CidrIp: 0.0.0.0/0
   SGIngress:
     Type: 'AWS::EC2::SecurityGroupIngress'
     Properties:
