@@ -6,6 +6,13 @@ Parameters:
     Description: AMI Id
     Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
     Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+  STK:
+    Description: "Name of stack"
+    Type: String
+  VER:
+    Description: "Kubernetes Version"
+    Type: String
+
 
 Mappings: 
   MInstanceMap: 
@@ -36,18 +43,20 @@ Resources:
         Fn::ImportValue: PublicSubnet1ID
       Tags:
         - Key: Name
-          Value: k8s-master
+          Value: !Sub master-${STK}
       UserData:
         Fn::Base64:
           Fn::Sub: |
             #!/bin/bash
+            set -ex
             exec >/root/bootstrap.log 2>&1
-            hostname k8s-master
-            echo "k8s-master"  >/etc/hostname
+            cd /root
+            hostname master-${STK}
+            echo master-${STK}  >/etc/hostname
             echo "
             alias c=clear
             alias kc=kubectl
-            set -o vi" >>$HOME/.bash_profile
+            set -o vi" >>/root/.bash_profile
             yum install ksh telnet docker -y
             #### Validation of python3 & pip3
             test ! -f /usr/bin/python3 && yum install -y python3
@@ -65,7 +74,7 @@ Resources:
             AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
             AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
             export AWS_DEFAULT_REGION
-            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep running>/tmp/$$
+            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep ${STK}|grep running>/tmp/$$
             cat /tmp/$$|awk '{print $1, " " , $2}' >>/etc/hosts
             salt-minion -d;salt-master -d
             sleep 60
@@ -83,18 +92,17 @@ Resources:
             gpgcheck=1
             repo_gpgcheck=0
             gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
-            exclude=kube*
             EOF
             cat <<EOF >  /etc/sysctl.d/k8s.conf
             net.bridge.bridge-nf-call-ip6tables = 1
             net.bridge.bridge-nf-call-iptables = 1
             EOF
-            setenforce 0
-            sed -i ‘s/^SELINUX=enforcing$/SELINUX=permissive/’ /etc/selinux/config
+            [ $(getenforce) ] && echo "Disable" || setenforce 0
+            sed -i -E "s/SELINUX=[^ ]*/SELINUX=disabled/g" /etc/selinux/config
             sed -i '/swap/d' /etc/fstab
             swapoff -a
             sysctl --system
-            yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+            yum install -y kubelet-${VER} kubeadm-${VER} kubectl-${VER}
             systemctl enable kubelet && systemctl start kubelet
             kubeadm init --pod-network-cidr=10.244.0.0/16
             mkdir -p /root/.kube
@@ -104,21 +112,27 @@ Resources:
             sleep 30
             kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
             sleep 60
-            grep 'kubeadm join' /root/bootstrap.log | sed 's|.$||g' >/tmp/$$.log
-            grep 'discovery-token-ca-cert-hash' /root/bootstrap.log >>/tmp/$$.log
-            d=$(cat /tmp/$$.log)
-            echo $d >/tmp/$$.sh
-            mkdir -p /srv/salt/base/scripts
-            cp /tmp/$$.sh /srv/salt/base/scripts/file.sh
-            salt 'k8s-worker1' cmd.script salt://scripts/file.sh
-            salt 'k8s-worker2' cmd.script salt://scripts/file.sh
+            #grep 'kubeadm join' /root/bootstrap.log | sed 's|.$||g' >/tmp/$$.log
+            #grep 'discovery-token-ca-cert-hash' /root/bootstrap.log >>/tmp/$$.log
+            #d=$(cat /tmp/$$.log)
+            #echo $d >/tmp/$$.sh
+            #mkdir -p /srv/salt/base/scripts
+            #cp /tmp/$$.sh /srv/salt/base/scripts/file.sh
+            ctlhost=$(hostname -i)
+            token=$(kubeadm token list |sed 1d |awk '{print $1}')
+            sha=$(openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt|openssl rsa -pubin -outform der 2>/dev/null|openssl dgst -sha256 -hex|sed 's/^.* //')
+            salt worker1-${STK} cmd.run "kubeadm join --token $token $ctlhost:6443 --discovery-token-ca-cert-hash sha256:$sha"
+            salt worker2-${STK} cmd.run "kubeadm join --token $token $ctlhost:6443 --discovery-token-ca-cert-hash sha256:$sha"
             sleep 30
             kubectl get nodes
-            echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root;systemctl restart crond
-            echo "salt-minion -d;salt-master -d" >/etc/rc5.d/S20salt
-            chmod 755 /etc/rc5.d/S20salt;cp -p /etc/rc5.d/S20salt /etc/rc3.d/S20salt
+            echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
+            echo "*/30 * * * * ps -ef|grep salt-master|grep -v grep || /usr/local/bin/salt-master -d" >>/var/spool/cron/root
+            echo "*/30 * * * * ps -ef|grep salt-minion|grep -v grep || /usr/local/bin/salt-minion -d" >>/var/spool/cron/root
+            systemctl restart crond
             #### Helm Installation
             curl -s https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3|bash
+            helm repo add argo https://argoproj.github.io/argo-helm
+            helm repo add traefik https://helm.traefik.io/traefik
             echo 'End of Task'
 
 
@@ -136,15 +150,15 @@ Resources:
         Fn::ImportValue: PublicSubnet1ID
       Tags:
         - Key: Name
-          Value: k8s-worker1
+          Value: !Sub worker1-${STK}
       UserData:
         Fn::Base64:
           Fn::Sub: |
             #!/bin/bash
-            set -x
+            set -ex
             exec >/root/bootstrap.log 2>&1 
-            hostname k8s-worker1
-            echo "k8s-worker1"  >/etc/hostname
+            hostname worker1-${STK}
+            echo worker1-${STK}  >/etc/hostname
             yum install ksh telnet docker -y
             #### Validation of python3 & pip3
             test ! -f /usr/bin/python3 && yum install -y python3
@@ -153,12 +167,12 @@ Resources:
             pip3 install salt
             #### Salt minion configuration
             mkdir -p /etc/salt/master.d /etc/salt/minion.d /srv/salt/base /etc/salt/pki/master
-            echo "master: k8s-master" >/etc/salt/minion.d/master.conf
+            echo "master: master-${STK}" >/etc/salt/minion.d/master.conf
             D=$(date +%Y-%m-%d)
             AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
             AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
             export AWS_DEFAULT_REGION
-            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep running>/tmp/$$
+            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep ${STK}|grep running>/tmp/$$
             cat /tmp/$$|awk '{print $1, " " , $2}' >>/etc/hosts
             salt-minion -d
             #### Kubernetes Install
@@ -171,18 +185,17 @@ Resources:
             gpgcheck=1
             repo_gpgcheck=0
             gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
-            exclude=kube*
             EOF
             cat <<EOF >  /etc/sysctl.d/k8s.conf
             net.bridge.bridge-nf-call-ip6tables = 1
             net.bridge.bridge-nf-call-iptables = 1
             EOF
             sysctl --system
-            yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+            yum install -y kubelet-${VER} kubeadm-${VER} kubectl-${VER}
             systemctl enable kubelet && systemctl start kubelet
-            echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root;systemctl restart crond
-            echo "salt-minion -d" >/etc/rc5.d/S20salt
-            chmod 755 /etc/rc5.d/S20salt;cp -p /etc/rc5.d/S20salt /etc/rc3.d/S20salt
+            echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
+            echo "*/30 * * * * ps -ef|grep salt-minion|grep -v grep || /usr/local/bin/salt-minion -d" >>/var/spool/cron/root
+            systemctl restart crond
             echo 'End of task'
 
 
@@ -200,15 +213,15 @@ Resources:
         Fn::ImportValue: PublicSubnet1ID
       Tags:
         - Key: Name
-          Value: k8s-worker2
+          Value: !Sub worker2-${STK}
       UserData:
         Fn::Base64:
           Fn::Sub: |
             #!/bin/bash
-            set -x
+            set -ex
             exec >/root/bootstrap.log 2>&1
-            hostname k8s-worker2
-            echo "k8s-worker2"  >/etc/hostname
+            hostname worker2-${STK}
+            echo worker2-${STK}  >/etc/hostname
             yum install ksh telnet docker -y
             #### Validation of python3 & pip3
             test ! -f /usr/bin/python3 && yum install -y python3
@@ -217,12 +230,12 @@ Resources:
             pip3 install salt
             #### Salt minion configuration
             mkdir -p /etc/salt/master.d /etc/salt/minion.d /srv/salt/base /etc/salt/pki/master
-            echo "master: k8s-master" >/etc/salt/minion.d/master.conf
+            echo "master: master-${STK}" >/etc/salt/minion.d/master.conf
             D=$(date +%Y-%m-%d)
             AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
             AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
             export AWS_DEFAULT_REGION
-            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep running>/tmp/$$
+            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep ${STK}|grep running>/tmp/$$
             cat /tmp/$$|awk '{print $1, " " , $2}' >>/etc/hosts
             salt-minion -d
             #### Kubernetes Installation
@@ -235,18 +248,17 @@ Resources:
             gpgcheck=1
             repo_gpgcheck=0
             gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
-            exclude=kube*
             EOF
             cat <<EOF >  /etc/sysctl.d/k8s.conf
             net.bridge.bridge-nf-call-ip6tables = 1
             net.bridge.bridge-nf-call-iptables = 1
             EOF
             sysctl --system
-            yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+            yum install -y kubelet-${VER} kubeadm-${VER} kubectl-${VER}
             systemctl enable kubelet && systemctl start kubelet
-            echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root;systemctl restart crond
-            echo "salt-minion -d" >/etc/rc5.d/S20salt
-            chmod 755 /etc/rc5.d/S20salt;cp -p /etc/rc5.d/S20salt /etc/rc3.d/S20salt
+            echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
+            echo "*/30 * * * * ps -ef|grep salt-minion|grep -v grep || /usr/local/bin/salt-minion -d" >>/var/spool/cron/root
+            systemctl restart crond
             echo 'End of task'
 
 
