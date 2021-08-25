@@ -12,7 +12,12 @@ Parameters:
   VER:
     Description: "Kubernetes Version"
     Type: String
-
+  MTYPE:
+    Description: "Master Node Instance Type"
+    Type: String
+  WTYPE:
+    Description: "Worker Node Instance Type"
+    Type: String
 
 Mappings: 
   MInstanceMap: 
@@ -36,7 +41,7 @@ Resources:
         Ref: InstanceProfile
       ImageId:
         Ref: ImageId
-      InstanceType: !FindInMap [MInstanceMap, Instancetype, dev]
+      InstanceType: !Sub ${MTYPE}
       SecurityGroupIds:
         - Ref: SecurityGroup
       SubnetId:
@@ -48,7 +53,7 @@ Resources:
         Fn::Base64:
           Fn::Sub: |
             #!/bin/bash
-            set -ex
+            set -x
             exec >/root/bootstrap.log 2>&1
             cd /root
             hostname master-${STK}
@@ -77,10 +82,10 @@ Resources:
             aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep ${STK}|grep running>/tmp/$$
             cat /tmp/$$|awk '{print $1, " " , $2}' >>/etc/hosts
             salt-minion -d;salt-master -d
-            sleep 60
+            sleep 10
             kill -9 $(pgrep salt-minion) $(pgrep salt-master)
             salt-minion -d;salt-master -d
-            sleep 60
+            sleep 30
             echo "Y"|salt-key -A
             systemctl enable docker && systemctl start docker
             cat <<EOF > /etc/yum.repos.d/kubernetes.repo
@@ -109,9 +114,10 @@ Resources:
             cp -i /etc/kubernetes/admin.conf /root/.kube/config
             chown $(id -u):$(id -g) /root/.kube/config
             export KUBECONFIG=/etc/kubernetes/admin.conf
-            sleep 30
             kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
-            sleep 60
+            sleep 10
+            echo "Y"|salt-key -A
+            sleep 40
             #grep 'kubeadm join' /root/bootstrap.log | sed 's|.$||g' >/tmp/$$.log
             #grep 'discovery-token-ca-cert-hash' /root/bootstrap.log >>/tmp/$$.log
             #d=$(cat /tmp/$$.log)
@@ -123,7 +129,7 @@ Resources:
             sha=$(openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt|openssl rsa -pubin -outform der 2>/dev/null|openssl dgst -sha256 -hex|sed 's/^.* //')
             salt worker1-${STK} cmd.run "kubeadm join --token $token $ctlhost:6443 --discovery-token-ca-cert-hash sha256:$sha"
             salt worker2-${STK} cmd.run "kubeadm join --token $token $ctlhost:6443 --discovery-token-ca-cert-hash sha256:$sha"
-            sleep 30
+            sleep 10
             kubectl get nodes
             echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
             echo "*/30 * * * * ps -ef|grep salt-master|grep -v grep || /usr/local/bin/salt-master -d" >>/var/spool/cron/root
@@ -143,7 +149,8 @@ Resources:
         Ref: InstanceProfile
       ImageId:
         Ref: ImageId
-      InstanceType: !FindInMap [WInstanceMap, Instancetype, dev]
+      #InstanceType: !FindInMap [WInstanceMap, Instancetype, dev]
+      InstanceType: !Sub ${WTYPE}
       SecurityGroupIds:
         - Ref: SecurityGroup
       SubnetId:
@@ -155,7 +162,7 @@ Resources:
         Fn::Base64:
           Fn::Sub: |
             #!/bin/bash
-            set -ex
+            set -x
             exec >/root/bootstrap.log 2>&1 
             hostname worker1-${STK}
             echo worker1-${STK}  >/etc/hostname
@@ -196,6 +203,9 @@ Resources:
             echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
             echo "*/30 * * * * ps -ef|grep salt-minion|grep -v grep || /usr/local/bin/salt-minion -d" >>/var/spool/cron/root
             systemctl restart crond
+            kill -9 $(pgrep salt-minion) 
+            sleep 70
+            salt-minion -d
             echo 'End of task'
 
 
@@ -206,7 +216,7 @@ Resources:
         Ref: InstanceProfile
       ImageId:
         Ref: ImageId
-      InstanceType: !FindInMap [WInstanceMap, Instancetype, dev]
+      InstanceType: !Sub ${WTYPE}
       SecurityGroupIds:
         - Ref: SecurityGroup
       SubnetId:
@@ -218,7 +228,7 @@ Resources:
         Fn::Base64:
           Fn::Sub: |
             #!/bin/bash
-            set -ex
+            set -x
             exec >/root/bootstrap.log 2>&1
             hostname worker2-${STK}
             echo worker2-${STK}  >/etc/hostname
@@ -259,6 +269,9 @@ Resources:
             echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
             echo "*/30 * * * * ps -ef|grep salt-minion|grep -v grep || /usr/local/bin/salt-minion -d" >>/var/spool/cron/root
             systemctl restart crond
+            kill -9 $(pgrep salt-minion) 
+            sleep 70
+            salt-minion -d
             echo 'End of task'
 
 

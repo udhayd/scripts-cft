@@ -15,21 +15,28 @@ usage() {
 }
 
 #### To validate the k8s property file
-k8s_prop () 
+prop_validate ()
+{
+if [ ! $(cat config.properties|grep -v '#'|grep $1) ]
+then
+echo "$1 property not defined in config.properties file ,Please define !"
+exit 255
+elif [ -z $(cat config.properties|grep -v '#'|grep $1|awk -F'=' '{print $2}') ]
+then
+echo "$1 property is null Please set ! "
+exit 255
+fi
+}
+configfile_validate () 
 {
 if [ ! -f config.properties ]
 then
 echo "config.properties file doesn't Exist, Please create with version tag. Eg: version=1.19 "
 exit 255
-elif [ ! $(grep version config.properties) ]
-then
-echo "'version' property not defined in config.properties file , Please set Eg: version=1.19 "
-exit 255
-elif [ -z $(grep version config.properties|awk -F'=' '{print $2}') ]
-then
-echo "'version' property is null , Please set Eg: version=1.19 "
-exit 255
 fi
+prop_validate version
+prop_validate mtype
+prop_validate wtype
 }
 
 #### To validate the Arguments
@@ -45,12 +52,12 @@ then
         ./provision.sh -n $2-vpc
 	echo ""
 	cd ../ 
-	k8s_prop
+        configfile_validate
 	echo "Executing K8s Stack ..."
 	echo ""
     fi
     echo ""
-    k8s_prop
+    configfile_validate
     echo "Executing K8s Stack ..."
 else
     usage
@@ -59,9 +66,11 @@ fi
 
 #### Varible Initialization
 echo "EC2_STACK_NAME=$2-k8s" >vars.sh
-ver=$(cat config.properties|grep version|awk -F'=' '{print $2}')
+ver=$(cat config.properties|grep -v '#'|grep version|awk -F'=' '{print $2}')
+mtyp=$(cat config.properties|grep -v '#'|grep mtype|awk -F'=' '{print $2}')
+wtyp=$(cat config.properties|grep -v '#'|grep wtype|awk -F'=' '{print $2}')
 source vars.sh
 set -ex
 
 #### K8s Stack Creation
-aws cloudformation deploy --template-file k8s.yaml --stack-name $EC2_STACK_NAME --no-fail-on-empty-changeset --capabilities CAPABILITY_IAM --parameter-overrides STK=$EC2_STACK_NAME  VER=$ver
+aws cloudformation deploy --template-file k8s.yaml --stack-name $EC2_STACK_NAME --no-fail-on-empty-changeset --capabilities CAPABILITY_IAM --parameter-overrides STK=$EC2_STACK_NAME  VER=$ver MTYPE=$mtyp WTYPE=$wtyp
