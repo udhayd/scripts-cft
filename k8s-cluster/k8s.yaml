@@ -274,7 +274,100 @@ Resources:
             salt-minion -d
             echo 'End of task'
 
+  nginxnode:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile:
+        Ref: InstanceProfile
+      ImageId:
+        Ref: ImageId
+      InstanceType: !FindInMap [WInstanceMap, Instancetype, dev]
+      SecurityGroupIds:
+        - Ref: SecurityGroup
+      SubnetId:
+        Fn::ImportValue: PublicSubnet1ID
+      Tags:
+        - Key: Name
+          Value: !Sub nginx-${STK}
+      UserData:
+        Fn::Base64:
+          Fn::Sub: |
+            #!/bin/bash
+            set -x
+            exec >/root/bootstrap.log 2>&1 
+            hostname nginx-${STK}
+            echo nginx-${STK}  >/etc/hostname
+            yum install ksh telnet -y
+            #### Validation of python3 & pip3
+            test ! -f /usr/bin/python3 && yum install -y python3
+            test ! -f /usr/bin/pip3 && yum install -y python3-pip
+            #### Install Salt
+            pip3 install salt
+            #### Install and configure ngnix
+            D=$(date +%Y-%m-%d)
+            AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
+            AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
+            export AWS_DEFAULT_REGION
+            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep ${STK}|grep running>/tmp/$$
+            cat /tmp/$$|awk '{print $1, " " , $2}' >>/etc/hosts
+            wrkr2=$(grep worker2 /etc/hosts|awk '{print $1}')
+            wrkr1=$(grep worker1 /etc/hosts|awk '{print $1}')
+            amazon-linux-extras install epel -y
+            yum install nginx -y
+            yum install nginx-mod-stream -y
+            cd /etc/nginx/
+            mv nginx.conf nginx.conf_org
+            cat >nginx.conf <<EOF
+            user nginx;
+	          worker_processes auto;
+            error_log /var/log/nginx/error.log;
+            pid /run/nginx.pid;
+            # Load dynamic modules. See /usr/share/doc/nginx/README.dynamic.
+            include /usr/share/nginx/modules/*.conf;
+            events {
+            worker_connections 1024;
+            }
+            stream {
+               upstream backend_80 {
+                   least_conn;
+                   server $wrkr1:32102;
+                   server $wrkr2:32102;
+              }
+ 
+               upstream backend_443 {
+                  least_conn;
+                  server $wrkr1:30468;
+                  server $wrkr2:30468;
+              }
 
+               server {
+                  listen        80;
+                  proxy_pass    backend_80;
+                  proxy_timeout 3s;
+                  proxy_connect_timeout 1s;
+              }
+
+               server {
+                  listen        443;
+                  proxy_pass    backend_443;
+                  proxy_timeout 3s;
+                  proxy_connect_timeout 1s;
+              }
+            }
+            EOF
+            service nginx status
+            service nginx start
+            #### Salt minion configuration
+            mkdir -p /etc/salt/master.d /etc/salt/minion.d /srv/salt/base /etc/salt/pki/master
+            echo "master: master-${STK}" >/etc/salt/minion.d/master.conf
+            salt-minion -d
+            echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
+            echo "*/30 * * * * ps -ef|grep salt-minion|grep -v grep || /usr/local/bin/salt-minion -d" >>/var/spool/cron/root
+            systemctl restart crond
+            kill -9 $(pgrep salt-minion) 
+            sleep 70
+            salt-minion -d
+            echo 'End of task'
 
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
