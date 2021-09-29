@@ -139,6 +139,7 @@ Resources:
             curl -s https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3|bash
             helm repo add argo https://argoproj.github.io/argo-helm
             helm repo add traefik https://helm.traefik.io/traefik
+	    helm install ingress traefik/traefik -n ingress --create-namespace
             echo 'End of Task'
 
 
