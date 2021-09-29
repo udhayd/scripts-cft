@@ -139,7 +139,7 @@ Resources:
             curl -s https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3|bash
             helm repo add argo https://argoproj.github.io/argo-helm
             helm repo add traefik https://helm.traefik.io/traefik
-	    helm install ingress traefik/traefik -n ingress --create-namespace
+            helm install ingress traefik/traefik -n ingress --create-namespace
             echo 'End of Task'
 
 
@@ -320,7 +320,7 @@ Resources:
             mv nginx.conf nginx.conf_org
             cat >nginx.conf <<EOF
             user nginx;
-	    worker_processes auto;
+            worker_processes auto;
             error_log /var/log/nginx/error.log;
             pid /run/nginx.pid;
             # Load dynamic modules. See /usr/share/doc/nginx/README.dynamic.
