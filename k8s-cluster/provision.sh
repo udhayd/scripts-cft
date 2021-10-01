@@ -37,6 +37,7 @@ fi
 prop_validate version
 prop_validate mtype
 prop_validate wtype
+prop_validate domname
 }
 
 #### To validate the Arguments
@@ -65,12 +66,14 @@ else
 fi
 
 #### Varible Initialization
-echo "EC2_STACK_NAME=$2-k8s" >vars.sh
+echo "EC2_STACK_NAME=$2-k8s
+ROUTE_STACK_NAME=$2-route53" >vars.sh
 ver=$(cat config.properties|grep -v '#'|grep version|awk -F'=' '{print $2}')
 mtyp=$(cat config.properties|grep -v '#'|grep mtype|awk -F'=' '{print $2}')
 wtyp=$(cat config.properties|grep -v '#'|grep wtype|awk -F'=' '{print $2}')
+domname=$(cat config.properties|grep -v '#'|grep domname|awk -F'=' '{print $2}')
 source vars.sh
 set -ex
 
 #### K8s Stack Creation
-aws cloudformation deploy --template-file k8s.yaml --stack-name $EC2_STACK_NAME --no-fail-on-empty-changeset --capabilities CAPABILITY_IAM --parameter-overrides STK=$EC2_STACK_NAME  VER=$ver MTYPE=$mtyp WTYPE=$wtyp
+aws cloudformation deploy --template-file k8s.yaml --stack-name $EC2_STACK_NAME --no-fail-on-empty-changeset --capabilities CAPABILITY_IAM --parameter-overrides STK=$EC2_STACK_NAME  VER=$ver MTYPE=$mtyp WTYPE=$wtyp HOSZONE=$domname

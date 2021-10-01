@@ -18,6 +18,10 @@ Parameters:
   WTYPE:
     Description: "Worker Node Instance Type"
     Type: String
+  HOSZONE:
+    Description: "Name of Hosted zone"
+    Type: String
+
 
 Mappings: 
   MInstanceMap: 
@@ -369,6 +373,23 @@ Resources:
             sleep 70
             salt-minion -d
             echo 'End of task'
+
+  DNS: 
+    Type: "AWS::Route53::HostedZone"
+    Properties: 
+      HostedZoneConfig: 
+        Comment: 'My hosted zone'
+      Name: !Sub ${HOSZONE}
+
+  DNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref DNS
+      Name: !Sub "*.${HOSZONE}"
+      Type: A
+      TTL: '900'
+      ResourceRecords:
+      - !GetAtt nginxnode.PublicIp
 
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
