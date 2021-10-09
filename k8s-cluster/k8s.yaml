@@ -178,7 +178,7 @@ Resources:
             aws route53 list-hosted-zones | grep ${HOSZONE}
             if [ \$? -eq 0 ]
             then
-            zonid=\$(aws route53 list-hosted-zones --query 'HostedZones[*].[Id]' --output text|awk -F'/' '{print \$3}')
+            zonid=\$(aws route53 list-hosted-zones --query 'HostedZones[*].[Name,Id]' --output text|grep ${HOSZONE}|awk -F'/' '{print \$3}')
             echo "
             {
                                \"Comment\": \"UPSERT a records\",
@@ -224,10 +224,15 @@ Resources:
             systemctl daemon-reload
             systemctl enable kubepatch.service
             systemctl start kubepatch.service
-            ssh-keygen -t rsa -f $HOME/.ssh/id_rsa -q -P ""
-            cat $HOME/.ssh/id_rsa.pub >>$HOME/.ssh/authorized_keys
-            chmod 600 $HOME/.ssh/authorized_keys
-            salt-cp '*' $HOME/.ssh/authorized_keys $HOME/.ssh/authorized_keys
+            ssh-keygen -t rsa -f /root/.ssh/id_rsa -q -P ""
+            cat /root/.ssh/id_rsa.pub >>/root/.ssh/authorized_keys
+            chmod 600 /root/.ssh/authorized_keys
+            salt-cp '*' /root/.ssh/authorized_keys /root/.ssh/authorized_keys
+            git clone https://github.com/GoogleCloudPlatform/microservices-demo.git
+            cd microservices-demo
+            kubectl create ns gapp
+            kubectl apply -f ./release/kubernetes-manifests.yaml -n gapp
+            kubectl create ing ingress --rule=gapp.${HOSZONE}/*=frontend:80 -n gapp
             echo 'End of Task'
 
 
@@ -468,6 +473,8 @@ Resources:
             EOF
             service nginx status
             service nginx start
+            pubip=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+            echo "$pubip  gapp.${HOSZONE}" >>/etc/hosts
             #### Salt minion configuration
             mkdir -p /etc/salt/master.d /etc/salt/minion.d /srv/salt/base /etc/salt/pki/master
             echo "master: master-${STK}" >/etc/salt/minion.d/master.conf
