@@ -508,20 +508,22 @@ Resources:
   DNSRecord1:
     Type: AWS::Route53::RecordSet
     Properties:
+      Comment: "UPSERT a records"
       HostedZoneId: !Ref DNS
       Name: !Sub "${HOSZONE}"
       Type: A
-      TTL: '900'
+      TTL: '300'
       ResourceRecords:
       - !GetAtt nginxnode.PublicIp
 
   DNSRecord2:
     Type: AWS::Route53::RecordSet
     Properties:
+      Comment: "UPSERT a records"
       HostedZoneId: !Ref DNS
       Name: !Sub "*.${HOSZONE}"
       Type: A
-      TTL: '900'
+      TTL: '300'
       ResourceRecords:
       - !GetAtt nginxnode.PublicIp
 
