@@ -1,2 +1,4 @@
 ./*/vars.sh
+./*/*/vars.sh
+./*/*/*/vars.sh
 .gitignore

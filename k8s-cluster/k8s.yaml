@@ -66,7 +66,7 @@ Resources:
             alias c=clear
             alias kc=kubectl
             set -o vi" >>/root/.bash_profile
-            yum install ksh telnet docker -y
+            yum install ksh git telnet docker -y
             #### Validation of python3 & pip3
             test ! -f /usr/bin/python3 && yum install -y python3
             test ! -f /usr/bin/pip3 && yum install -y python3-pip
@@ -122,12 +122,6 @@ Resources:
             sleep 10
             echo "Y"|salt-key -A
             sleep 40
-            #grep 'kubeadm join' /root/bootstrap.log | sed 's|.$||g' >/tmp/$$.log
-            #grep 'discovery-token-ca-cert-hash' /root/bootstrap.log >>/tmp/$$.log
-            #d=$(cat /tmp/$$.log)
-            #echo $d >/tmp/$$.sh
-            #mkdir -p /srv/salt/base/scripts
-            #cp /tmp/$$.sh /srv/salt/base/scripts/file.sh
             ctlhost=$(hostname -i)
             token=$(kubeadm token list |sed 1d |awk '{print $1}')
             sha=$(openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt|openssl rsa -pubin -outform der 2>/dev/null|openssl dgst -sha256 -hex|sed 's/^.* //')
@@ -135,15 +129,105 @@ Resources:
             salt worker2-${STK} cmd.run "kubeadm join --token $token $ctlhost:6443 --discovery-token-ca-cert-hash sha256:$sha"
             sleep 10
             kubectl get nodes
+            cat >/usr/bin/salt_start.sh <<EOF
+            #! /bin/bash
+            set -x
+            exec >/tmp/salt_start.log 2>&1
+            PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin
+            export PATH
+            until bash -c "echo >/dev/tcp/master-${STK}/4505" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
+            until bash -c "echo >/dev/tcp/master-${STK}/4506" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
+            /usr/local/bin/salt-minion -d
+            EOF
+            chmod 755 /usr/bin/salt_start.sh
             echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
-            echo "*/30 * * * * ps -ef|grep salt-master|grep -v grep || /usr/local/bin/salt-master -d" >>/var/spool/cron/root
-            echo "*/30 * * * * ps -ef|grep salt-minion|grep -v grep || /usr/local/bin/salt-minion -d" >>/var/spool/cron/root
+            echo "@reboot export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin;salt-master -d --log-file=/var/log/salt-master.log --log-file-level='all'" >>/var/spool/cron/root
+            echo "@reboot /usr/bin/salt_start.sh" >>/var/spool/cron/root
             systemctl restart crond
             #### Helm Installation
             curl -s https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3|bash
             helm repo add argo https://argoproj.github.io/argo-helm
             helm repo add traefik https://helm.traefik.io/traefik
-            helm install ingress traefik/traefik -n ingress --create-namespace
+            cd /root
+            helm fetch traefik/traefik --untar
+            cd traefik
+            sed -i 's/# nodePort/nodePort/g' values.yaml
+            helm install ingress . -n ingress --create-namespace
+            cat >/usr/bin/kube_svc_patch.sh <<EOF
+            #! /bin/bash
+            #### Script to update the Loadbalancer IP for IngressController
+            set -x
+            exec >/tmp/patch.log 2>&1
+            AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
+            AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
+            export AWS_DEFAULT_REGION
+            export KUBECONFIG=/root/.kube/config
+            
+            #### Update LB IP
+            until aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PublicIpAddress,Tags[?Key==\`Name\`].Value|[0],LaunchTime,State.Name]' --output text|grep ${STK}|grep -i running|grep nginx &> /dev/null; do sleep 10; done
+            lbip=\$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PublicIpAddress,Tags[?Key==\`Name\`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep nginx|awk '{print \$1}')
+            until kubectl get ns &> /dev/null; do sleep 10; done
+            kubectl patch svc ingress-traefik -p '{"spec":{"externalIPs": null}}' -n ingress
+            echo "
+              spec:
+                externalIPs:
+                   - \$lbip" >/tmp/spec.yaml
+                   kubectl patch svc ingress-traefik --type merge --patch  "\$(cat /tmp/spec.yaml)" -n ingress
+            
+            #### Update record set for hosted zone
+            aws route53 list-hosted-zones | grep ${HOSZONE}
+            if [ \$? -eq 0 ]
+            then
+            zonid=\$(aws route53 list-hosted-zones --query 'HostedZones[*].[Id]' --output text|awk -F'/' '{print \$3}')
+            echo "
+            {
+                               \"Comment\": \"UPSERT a records\",
+                               \"Changes\": [{
+                               \"Action\": \"UPSERT\",
+                                           \"ResourceRecordSet\": {
+                                                       \"Name\": \"${HOSZONE}\",
+                                                       \"Type\": \"A\",
+                                                       \"TTL\": 300,
+                                                  \"ResourceRecords\": [{ \"Value\": \"\$lbip\"}]
+            }}]
+            }" >/root/dom.json
+            echo "
+            {
+                               \"Comment\": \"UPSERT a records\",
+                               \"Changes\": [{
+                                \"Action\": \"UPSERT\",
+                                            \"ResourceRecordSet\": {
+                                                        \"Name\": \"*.${HOSZONE}\",
+                                                        \"Type\": \"A\",
+                                                        \"TTL\": 300,
+                                                  \"ResourceRecords\": [{ \"Value\": \"\$lbip\"}]
+            }}]
+            }" >/root/wildcard-dom.json
+            fi
+            aws route53 change-resource-record-sets --hosted-zone-id \$zonid --change-batch file:///root/dom.json
+            aws route53 change-resource-record-sets --hosted-zone-id \$zonid --change-batch file:///root/wildcard-dom.json
+            EOF
+            chmod 755 /usr/bin/kube_svc_patch.sh
+            cat >/etc/systemd/system/kubepatch.service <<EOF
+            [Unit]
+            Description=Script for k8s update
+            After=kubelet.service
+            
+            [Service]
+            Type=simple
+            ExecStart=/usr/bin/kube_svc_patch.sh
+            TimeoutStartSec=0
+            
+            [Install]
+            WantedBy=default.target
+            EOF
+            systemctl daemon-reload
+            systemctl enable kubepatch.service
+            systemctl start kubepatch.service
+            ssh-keygen -t rsa -f $HOME/.ssh/id_rsa -q -P ""
+            cat $HOME/.ssh/id_rsa.pub >>$HOME/.ssh/authorized_keys
+            chmod 600 $HOME/.ssh/authorized_keys
+            salt-cp '*' $HOME/.ssh/authorized_keys $HOME/.ssh/authorized_keys
             echo 'End of Task'
 
 
@@ -205,8 +289,19 @@ Resources:
             sysctl --system
             yum install -y kubelet-${VER} kubeadm-${VER} kubectl-${VER}
             systemctl enable kubelet && systemctl start kubelet
+            cat >/usr/bin/salt_start.sh <<EOF
+            #! /bin/bash
+            set -x
+            exec >/tmp/salt_start.log 2>&1
+            PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin
+            export PATH
+            until bash -c "echo >/dev/tcp/master-${STK}/4505" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
+            until bash -c "echo >/dev/tcp/master-${STK}/4506" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
+            /usr/local/bin/salt-minion -d
+            EOF
+            chmod 755 /usr/bin/salt_start.sh
             echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
-            echo "*/30 * * * * ps -ef|grep salt-minion|grep -v grep || /usr/local/bin/salt-minion -d" >>/var/spool/cron/root
+            echo "@reboot /usr/bin/salt_start.sh" >>/var/spool/cron/root
             systemctl restart crond
             kill -9 $(pgrep salt-minion) 
             sleep 70
@@ -271,8 +366,19 @@ Resources:
             sysctl --system
             yum install -y kubelet-${VER} kubeadm-${VER} kubectl-${VER}
             systemctl enable kubelet && systemctl start kubelet
+            cat >/usr/bin/salt_start.sh <<EOF
+            #! /bin/bash
+            set -x
+            exec >/tmp/salt_start.log 2>&1
+            PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin
+            export PATH
+            until bash -c "echo >/dev/tcp/master-${STK}/4505" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
+            until bash -c "echo >/dev/tcp/master-${STK}/4506" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
+            /usr/local/bin/salt-minion -d
+            EOF
+            chmod 755 /usr/bin/salt_start.sh
             echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
-            echo "*/30 * * * * ps -ef|grep salt-minion|grep -v grep || /usr/local/bin/salt-minion -d" >>/var/spool/cron/root
+            echo "@reboot /usr/bin/salt_start.sh" >>/var/spool/cron/root
             systemctl restart crond
             kill -9 $(pgrep salt-minion) 
             sleep 70
@@ -335,14 +441,14 @@ Resources:
             stream {
                upstream backend_80 {
                    least_conn;
-                   server $wrkr1:32102;
-                   server $wrkr2:32102;
+                   server $wrkr1:32080;
+                   server $wrkr2:32080;
               }
  
                upstream backend_443 {
                   least_conn;
-                  server $wrkr1:30468;
-                  server $wrkr2:30468;
+                  server $wrkr1:32433;
+                  server $wrkr2:32433;
               }
 
                server {
@@ -366,8 +472,19 @@ Resources:
             mkdir -p /etc/salt/master.d /etc/salt/minion.d /srv/salt/base /etc/salt/pki/master
             echo "master: master-${STK}" >/etc/salt/minion.d/master.conf
             salt-minion -d
+            cat >/usr/bin/salt_start.sh <<EOD
+            #! /bin/bash           
+            set -x
+            exec >/tmp/salt_start.log 2>&1
+            PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin
+            export PATH
+            until bash -c "echo >/dev/tcp/master-${STK}/4505" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
+            until bash -c "echo >/dev/tcp/master-${STK}/4506" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
+            /usr/local/bin/salt-minion -d
+            EOD
+            chmod 755 /usr/bin/salt_start.sh
             echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
-            echo "*/30 * * * * ps -ef|grep salt-minion|grep -v grep || /usr/local/bin/salt-minion -d" >>/var/spool/cron/root
+            echo "@reboot /usr/bin/salt_start.sh" >>/var/spool/cron/root
             systemctl restart crond
             kill -9 $(pgrep salt-minion) 
             sleep 70
@@ -381,7 +498,17 @@ Resources:
         Comment: 'My hosted zone'
       Name: !Sub ${HOSZONE}
 
-  DNSRecord:
+  DNSRecord1:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref DNS
+      Name: !Sub "${HOSZONE}"
+      Type: A
+      TTL: '900'
+      ResourceRecords:
+      - !GetAtt nginxnode.PublicIp
+
+  DNSRecord2:
     Type: AWS::Route53::RecordSet
     Properties:
       HostedZoneId: !Ref DNS
@@ -433,4 +560,4 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
         - arn:aws:iam::aws:policy/AmazonS3FullAccess
         - arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess
-
+        - arn:aws:iam::aws:policy/AmazonRoute53FullAccess
