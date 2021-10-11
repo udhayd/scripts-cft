@@ -66,6 +66,7 @@ Resources:
             alias c=clear
             alias kc=kubectl
             set -o vi" >>/root/.bash_profile
+            echo "PS1=\`hostname\`:'$PWD# '" >>/root/.bash_profile
             yum install ksh git telnet docker -y
             #### Validation of python3 & pip3
             test ! -f /usr/bin/python3 && yum install -y python3
@@ -412,6 +413,9 @@ Resources:
             set -x
             exec >/root/bootstrap.log 2>&1 
             hostname nginx-${STK}
+            echo "PS1=\`hostname\`:'$PWD# '" >>/root/.bash_profile
+            echo "set -o vi
+            export PS1" >>/root/.bash_profile
             echo nginx-${STK}  >/etc/hostname
             yum install ksh telnet -y
             #### Validation of python3 & pip3
@@ -452,8 +456,8 @@ Resources:
  
                upstream backend_443 {
                   least_conn;
-                  server $wrkr1:32433;
-                  server $wrkr2:32433;
+                  server $wrkr1:32443;
+                  server $wrkr2:32443;
               }
 
                server {
@@ -473,6 +477,7 @@ Resources:
             EOF
             service nginx status
             service nginx start
+            systemctl enable nginx
             pubip=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
             echo "$pubip  gapp.${HOSZONE}" >>/etc/hosts
             #### Salt minion configuration
