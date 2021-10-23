@@ -66,7 +66,7 @@ Resources:
             alias c=clear
             alias kc=kubectl
             set -o vi" >>/root/.bash_profile
-            echo "PS1=\`hostname\`:'$PWD# '" >>/root/.bash_profile
+            echo "PS1=\`hostname\`:'\$PWD# '" >>/root/.bash_profile
             yum install ksh git telnet docker -y
             #### Validation of python3 & pip3
             test ! -f /usr/bin/python3 && yum install -y python3
@@ -154,6 +154,14 @@ Resources:
             cd traefik
             sed -i 's/# nodePort/nodePort/g' values.yaml
             helm install ingress . -n ingress --create-namespace
+            cat >/root/longhorn.sh <<EOD
+            kubectl create ns longhorn
+            kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/v1.2.0/deploy/prerequisite/longhorn-iscsi-installation.yaml
+            helm repo add longhorn https://charts.longhorn.io
+            helm repo update
+            helm install longhorn longhorn/longhorn -n longhorn
+            EOD
+            chmod 755 /root/longhorn.sh
             cat >/usr/bin/kube_svc_patch.sh <<EOF
             #! /bin/bash
             #### Script to update the Loadbalancer IP for IngressController
