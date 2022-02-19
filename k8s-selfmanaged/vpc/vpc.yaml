@@ -1,0 +1,236 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description:  Creation of VPC,Subnets,Routes,IGW,NATGW
+
+Parameters:
+  PrivateSubnetCidr:
+    Description: CSV parameter for IP blocks of private subnets
+    Type: CommaDelimitedList
+  PublicSubnetCidr:
+    Description: CSV parameter for IP blocks of public subnets
+    Type: CommaDelimitedList
+  VpcCidr:
+    Description: CIDR block of the VPC as a whole
+    Type: String
+
+Resources:
+  PubPrivateVPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      Tags:
+        - Key: Name
+          Value: PubPrivateVPC
+     
+  PublicSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref PubPrivateVPC
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs 
+          Ref: 'AWS::Region'
+      CidrBlock: !Select
+        - 0
+        - !Ref 'PublicSubnetCidr'
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: PublicSubnet1
+
+  PublicSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref PubPrivateVPC
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs
+          Ref: 'AWS::Region'
+      CidrBlock: !Select
+        - 1
+        - !Ref 'PublicSubnetCidr'
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: PublicSubnet2
+
+  PrivateSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref PubPrivateVPC
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs
+          Ref: 'AWS::Region'
+      CidrBlock: !Select
+        - 0
+        - !Ref 'PrivateSubnetCidr'
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: PrivateSubnet1
+
+  PrivateSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref PubPrivateVPC
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs
+          Ref: 'AWS::Region'
+      CidrBlock: !Select
+        - 1
+        - !Ref 'PrivateSubnetCidr'
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: PrivateSubnet2
+
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Join [_, [!Ref 'AWS::StackName']]
+        - Key: Network
+          Value: Public
+      
+  GatewayToInternet:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref PubPrivateVPC
+      InternetGatewayId: !Ref InternetGateway
+      
+  PublicRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref PubPrivateVPC
+      Tags:
+        - Key: Network
+          Value: Public
+        - Key: Name
+          Value: PublicSubnetRoute
+      
+  PublicRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: GatewayToInternet
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+     
+  PublicSubnet1RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+     
+  PublicSubnet2RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+     
+  PrivateRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref PubPrivateVPC
+      Tags:
+        - Key: Network
+          Value: Private
+        - Key: Name
+          Value: PrivateSubnetRoute
+      
+  PrivateSubnet1RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+     
+  PrivateSubnet2RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+Outputs:
+  AZ1:
+    Description: 'AZ #1 of 3'
+    Export:
+      Name: 'AZ1'
+    Value: !Select
+      - 0
+      - !GetAZs
+        Ref: AWS::Region
+  AZ2:
+    Description: 'AZ #1 of 2'
+    Export:
+      Name: 'AZ2'
+    Value: !Select
+      - 1
+      - !GetAZs
+        Ref: AWS::Region
+
+  AZ3:
+    Description: 'AZ #1 of 3'
+    Export:
+      Name: 'AZ3'
+    Value: !Select
+      - 2
+      - !GetAZs
+        Ref: AWS::Region
+
+  VPCID:
+    Description: The ID of the VPC
+    Export:
+      Name: 'MyVPCID'
+    Value: !Ref 'PubPrivateVPC'
+
+  Publicsubnet1:
+    Description: 'PublicSubnet #1 of 2'
+    Export:
+      Name: 'PublicSubnet1'
+    Value: !Select
+      - 0
+      - !Ref 'PublicSubnetCidr'
+  Publicsubnet2:
+    Description: 'PublicSubnet #2 of 2'
+    Export:
+      Name: 'PublicSubnet2'
+    Value: !Select
+      - 1
+      - !Ref 'PublicSubnetCidr'
+  Privatesubnet1:
+    Description: 'PrivateSubnet #1 of 2'
+    Export:
+      Name: 'PrivateSubnet1'
+    Value: !Select
+      - 0
+      - !Ref 'PrivateSubnetCidr'
+  Privatesubnet2:
+    Description: 'PrivateSubnet #2 of 2'
+    Export:
+      Name: 'PrivateSubnet2'
+    Value: !Select
+      - 1
+      - !Ref 'PrivateSubnetCidr'
+
+  Publicsubnet1ID:
+    Description: 'PublicSubnet #1 of 2'
+    Export:
+      Name: 'PublicSubnet1ID'
+    Value: !Ref PublicSubnet1
+  Publicsubnet2ID:
+    Description: 'PublicSubnet #2 of 2'
+    Export:
+      Name: 'PublicSubnet2ID'
+    Value: !Ref PublicSubnet2
+  Privatesubnet1ID:
+    Description: 'PrivateSubnet #1 of 2'
+    Export:
+      Name: 'PrivateSubnet1ID'
+    Value: !Ref PrivateSubnet1
+  Privatesubnet2ID:
+    Description: 'PrivateSubnet #2 of 2'
+    Export:
+      Name: 'PrivateSubnet2ID'
+    Value: !Ref PrivateSubnet2

@@ -1,0 +1,544 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: K8s Cluster Instances Creation
+
+Parameters:
+  ImageId:
+    Description: AMI Id
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+  STK:
+    Description: "Name of stack"
+    Type: String
+  VER:
+    Description: "Kubernetes Version"
+    Type: String
+  MTYPE:
+    Description: "Master Node Instance Type"
+    Type: String
+  WTYPE:
+    Description: "Worker Node Instance Type"
+    Type: String
+
+
+Mappings: 
+  MInstanceMap: 
+    Instancetype: 
+      dev: "t2.medium"
+      test: "t2.medium"
+      uat: "t2.medium"
+      prod: "t2.medium"
+  WInstanceMap: 
+    Instancetype: 
+      dev: "t2.micro"
+      test: "t2.micro"
+      uat: "t2.micro"
+      prod: "t2.micro"
+
+Resources:
+  Masternode:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile:
+        Ref: InstanceProfile
+      ImageId:
+        Ref: ImageId
+      InstanceType: !Sub ${MTYPE}
+      SecurityGroupIds:
+        - Ref: SecurityGroup
+      SubnetId:
+        Fn::ImportValue: PublicSubnet1ID
+      Tags:
+        - Key: Name
+          Value: !Sub master-${STK}
+      UserData:
+        Fn::Base64:
+          Fn::Sub: |
+            #!/bin/bash
+            set -x
+            exec >/root/bootstrap.log 2>&1
+            cd /root
+            hostname master-${STK}
+            echo master-${STK}  >/etc/hostname
+            echo "
+            alias c=clear
+            alias kc=kubectl
+            set -o vi" >>/root/.bash_profile
+            echo "PS1=\`hostname\`:'\$PWD# '" >>/root/.bash_profile
+            yum install ksh git telnet docker -y
+            #### Validation of python3 & pip3
+            test ! -f /usr/bin/python3 && yum install -y python3
+            test ! -f /usr/bin/pip3 && yum install -y python3-pip
+            #### Install Salt
+            pip3 install salt
+            #### Salt master configuration
+            mkdir -p /etc/salt/master.d /etc/salt/minion.d /srv/salt/base /etc/salt/pki/master
+            echo "
+            file_roots:
+               base:
+                 - /srv/salt/base" >/etc/salt/master.d/roots.conf
+            echo "master:  localhost" >/etc/salt/minion.d/master.conf
+            D=$(date +%Y-%m-%d)
+            AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
+            AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
+            export AWS_DEFAULT_REGION
+            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep ${STK}|grep running>/tmp/$$
+            cat /tmp/$$|awk '{print $1, " " , $2}' >>/etc/hosts
+            salt-minion -d;salt-master -d
+            sleep 10
+            kill -9 $(pgrep salt-minion) $(pgrep salt-master)
+            salt-minion -d;salt-master -d
+            sleep 30
+            echo "Y"|salt-key -A
+            systemctl enable docker && systemctl start docker
+            cat <<EOF > /etc/yum.repos.d/kubernetes.repo
+            #### Kubernetes Installation & Configuration
+            [kubernetes]
+            name=Kubernetes
+            baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+            enabled=1
+            gpgcheck=1
+            repo_gpgcheck=0
+            gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+            EOF
+            cat <<EOF >  /etc/sysctl.d/k8s.conf
+            net.bridge.bridge-nf-call-ip6tables = 1
+            net.bridge.bridge-nf-call-iptables = 1
+            EOF
+            [ $(getenforce) ] && echo "Disable" || setenforce 0
+            sed -i -E "s/SELINUX=[^ ]*/SELINUX=disabled/g" /etc/selinux/config
+            sed -i '/swap/d' /etc/fstab
+            swapoff -a
+            sysctl --system
+            yum install -y kubelet-${VER} kubeadm-${VER} kubectl-${VER}
+            systemctl enable kubelet && systemctl start kubelet
+            kubeadm init --pod-network-cidr=10.244.0.0/16
+            mkdir -p /root/.kube
+            cp -i /etc/kubernetes/admin.conf /root/.kube/config
+            chown $(id -u):$(id -g) /root/.kube/config
+            export KUBECONFIG=/etc/kubernetes/admin.conf
+            kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+            sleep 10
+            echo "Y"|salt-key -A
+            sleep 40
+            ctlhost=$(hostname -i)
+            token=$(kubeadm token list |sed 1d |awk '{print $1}')
+            sha=$(openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt|openssl rsa -pubin -outform der 2>/dev/null|openssl dgst -sha256 -hex|sed 's/^.* //')
+            salt worker1-${STK} cmd.run "kubeadm join --token $token $ctlhost:6443 --discovery-token-ca-cert-hash sha256:$sha"
+            salt worker2-${STK} cmd.run "kubeadm join --token $token $ctlhost:6443 --discovery-token-ca-cert-hash sha256:$sha"
+            sleep 10
+            kubectl get nodes
+            cat >/usr/bin/salt_start.sh <<EOF
+            #! /bin/bash
+            set -x
+            exec >/tmp/salt_start.log 2>&1
+            PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin
+            export PATH
+            until bash -c "echo >/dev/tcp/master-${STK}/4505" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
+            until bash -c "echo >/dev/tcp/master-${STK}/4506" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
+            /usr/local/bin/salt-minion -d
+            EOF
+            chmod 755 /usr/bin/salt_start.sh
+            echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
+            echo "@reboot export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin;salt-master -d --log-file=/var/log/salt-master.log --log-file-level='all'" >>/var/spool/cron/root
+            echo "@reboot /usr/bin/salt_start.sh" >>/var/spool/cron/root
+            systemctl restart crond
+            #### Helm Installation
+            curl -s https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3|bash
+            helm repo add argo https://argoproj.github.io/argo-helm
+            helm repo add traefik https://helm.traefik.io/traefik
+            cd /root
+            helm fetch traefik/traefik --untar
+            cd traefik
+            sed -i 's/# nodePort/nodePort/g' values.yaml
+            helm install ingress . -n ingress --create-namespace
+            cat >/root/longhorn.sh <<EOD
+            kubectl create ns longhorn
+            kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/v1.2.0/deploy/prerequisite/longhorn-iscsi-installation.yaml
+            helm repo add longhorn https://charts.longhorn.io
+            helm repo update
+            helm install longhorn longhorn/longhorn -n longhorn
+            EOD
+            chmod 755 /root/longhorn.sh
+            cat >/usr/bin/kube_svc_patch.sh <<EOF
+            #! /bin/bash
+            #### Script to update the Loadbalancer IP for IngressController
+            set -x
+            exec >/tmp/patch.log 2>&1
+            AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
+            AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
+            export AWS_DEFAULT_REGION
+            export KUBECONFIG=/root/.kube/config
+            
+            #### Update LB IP
+            until aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PublicIpAddress,Tags[?Key==\`Name\`].Value|[0],LaunchTime,State.Name]' --output text|grep ${STK}|grep -i running|grep nginx &> /dev/null; do sleep 10; done
+            lbip=\$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PublicIpAddress,Tags[?Key==\`Name\`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep nginx|awk '{print \$1}')
+            until kubectl get ns &> /dev/null; do sleep 10; done
+            kubectl patch svc ingress-traefik -p '{"spec":{"externalIPs": null}}' -n ingress
+            echo "
+              spec:
+                externalIPs:
+                   - \$lbip" >/tmp/spec.yaml
+            kubectl patch svc ingress-traefik --type merge --patch  "\$(cat /tmp/spec.yaml)" -n ingress
+
+            #### Update DNS Record
+            KEY="Gs7g6lnteDZ5BzJSxzGIbohrhXhiVcNx02rPbV7_";
+            ZONE_ID="87faf9eaaccf4a5c67882d073e9d438f";
+            NAME="*.groofy.live";
+            SDNS_ID=\$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/\$ZONE_ID/dns_records?name=\$NAME" \
+                 -H "Authorization: Bearer \$KEY" \
+                 -H "Content-Type: application/json" \
+                 | python -m json.tool|grep -w "id"|awk -F':' '{print \$2}'|sed -e 's/"//g' -e 's/,//g' -e 's/ //g')                                        
+            DNS_ID="\$SDNS_ID";
+            TYPE="A";
+            NAME="*.groofy.live";
+            CONTENT="\$lbip";
+            PROXIED="false";
+            TTL="1";
+            curl -s -X PUT "https://api.cloudflare.com/client/v4/zones/\$ZONE_ID/dns_records/\$DNS_ID" \
+                 -H "Authorization: Bearer \$KEY" \
+                 -H "Content-Type: application/json" \
+                 --data '{"type":"'"\$TYPE"'","name":"'"\$NAME"'","content":"'"\$CONTENT"'","proxied":'"\$PROXIED"',"ttl":'"\$TTL"'}' | python -m json.tool;
+            EOF
+            chmod 755 /usr/bin/kube_svc_patch.sh
+            cat >/etc/systemd/system/kubepatch.service <<EOF
+            [Unit]
+            Description=Script for k8s update
+            After=kubelet.service
+            
+            [Service]
+            Type=simple
+            ExecStart=/usr/bin/kube_svc_patch.sh
+            TimeoutStartSec=0
+            
+            [Install]
+            WantedBy=default.target
+            EOF
+            systemctl daemon-reload
+            systemctl enable kubepatch.service
+            systemctl start kubepatch.service
+            ssh-keygen -t rsa -f /root/.ssh/id_rsa -q -P ""
+            cat /root/.ssh/id_rsa.pub >>/root/.ssh/authorized_keys
+            chmod 600 /root/.ssh/authorized_keys
+            salt-cp '*' /root/.ssh/authorized_keys /root/.ssh/authorized_keys
+            git clone https://github.com/GoogleCloudPlatform/microservices-demo.git
+            cd microservices-demo
+            kubectl create ns gapp
+            kubectl apply -f ./release/kubernetes-manifests.yaml -n gapp
+            kubectl create ing ingress --rule=gapp.groofy.live/*=frontend:80 -n gapp
+            echo 'End of Task'
+
+
+  Workernode1:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile:
+        Ref: InstanceProfile
+      ImageId:
+        Ref: ImageId
+      #InstanceType: !FindInMap [WInstanceMap, Instancetype, dev]
+      InstanceType: !Sub ${WTYPE}
+      SecurityGroupIds:
+        - Ref: SecurityGroup
+      SubnetId:
+        Fn::ImportValue: PublicSubnet1ID
+      Tags:
+        - Key: Name
+          Value: !Sub worker1-${STK}
+      UserData:
+        Fn::Base64:
+          Fn::Sub: |
+            #!/bin/bash
+            set -x
+            exec >/root/bootstrap.log 2>&1 
+            hostname worker1-${STK}
+            echo "PS1=\`hostname\`:'\$PWD# '" >>/root/.bash_profile
+            echo "set -o vi
+            export PS1" >>/root/.bash_profile
+            echo worker1-${STK}  >/etc/hostname
+            yum install ksh telnet docker -y
+            #### Validation of python3 & pip3
+            test ! -f /usr/bin/python3 && yum install -y python3
+            test ! -f /usr/bin/pip3 && yum install -y python3-pip
+            #### Install Salt
+            pip3 install salt
+            #### Salt minion configuration
+            mkdir -p /etc/salt/master.d /etc/salt/minion.d /srv/salt/base /etc/salt/pki/master
+            echo "master: master-${STK}" >/etc/salt/minion.d/master.conf
+            D=$(date +%Y-%m-%d)
+            AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
+            AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
+            export AWS_DEFAULT_REGION
+            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep ${STK}|grep running>/tmp/$$
+            cat /tmp/$$|awk '{print $1, " " , $2}' >>/etc/hosts
+            salt-minion -d
+            #### Kubernetes Install
+            systemctl enable docker && systemctl start docker
+            cat <<EOF > /etc/yum.repos.d/kubernetes.repo
+            [kubernetes]
+            name=Kubernetes
+            baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+            enabled=1
+            gpgcheck=1
+            repo_gpgcheck=0
+            gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+            EOF
+            cat <<EOF >  /etc/sysctl.d/k8s.conf
+            net.bridge.bridge-nf-call-ip6tables = 1
+            net.bridge.bridge-nf-call-iptables = 1
+            EOF
+            sysctl --system
+            yum install -y kubelet-${VER} kubeadm-${VER} kubectl-${VER}
+            systemctl enable kubelet && systemctl start kubelet
+            cat >/usr/bin/salt_start.sh <<EOF
+            #! /bin/bash
+            set -x
+            exec >/tmp/salt_start.log 2>&1
+            PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin
+            export PATH
+            until bash -c "echo >/dev/tcp/master-${STK}/4505" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
+            until bash -c "echo >/dev/tcp/master-${STK}/4506" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
+            /usr/local/bin/salt-minion -d
+            EOF
+            chmod 755 /usr/bin/salt_start.sh
+            echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
+            echo "@reboot /usr/bin/salt_start.sh" >>/var/spool/cron/root
+            systemctl restart crond
+            kill -9 $(pgrep salt-minion) 
+            sleep 70
+            salt-minion -d
+            echo 'End of task'
+
+
+  Workernode2:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile:
+        Ref: InstanceProfile
+      ImageId:
+        Ref: ImageId
+      InstanceType: !Sub ${WTYPE}
+      SecurityGroupIds:
+        - Ref: SecurityGroup
+      SubnetId:
+        Fn::ImportValue: PublicSubnet1ID
+      Tags:
+        - Key: Name
+          Value: !Sub worker2-${STK}
+      UserData:
+        Fn::Base64:
+          Fn::Sub: |
+            #!/bin/bash
+            set -x
+            exec >/root/bootstrap.log 2>&1
+            hostname worker2-${STK}
+            echo "PS1=\`hostname\`:'\$PWD# '" >>/root/.bash_profile
+            echo "set -o vi
+            export PS1" >>/root/.bash_profile
+            echo worker2-${STK}  >/etc/hostname
+            yum install ksh telnet docker -y
+            #### Validation of python3 & pip3
+            test ! -f /usr/bin/python3 && yum install -y python3
+            test ! -f /usr/bin/pip3 && yum install -y python3-pip
+            #### Install Salt
+            pip3 install salt
+            #### Salt minion configuration
+            mkdir -p /etc/salt/master.d /etc/salt/minion.d /srv/salt/base /etc/salt/pki/master
+            echo "master: master-${STK}" >/etc/salt/minion.d/master.conf
+            D=$(date +%Y-%m-%d)
+            AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
+            AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
+            export AWS_DEFAULT_REGION
+            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep ${STK}|grep running>/tmp/$$
+            cat /tmp/$$|awk '{print $1, " " , $2}' >>/etc/hosts
+            salt-minion -d
+            #### Kubernetes Installation
+            systemctl enable docker && systemctl start docker
+            cat <<EOF > /etc/yum.repos.d/kubernetes.repo
+            [kubernetes]
+            name=Kubernetes
+            baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+            enabled=1
+            gpgcheck=1
+            repo_gpgcheck=0
+            gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+            EOF
+            cat <<EOF >  /etc/sysctl.d/k8s.conf
+            net.bridge.bridge-nf-call-ip6tables = 1
+            net.bridge.bridge-nf-call-iptables = 1
+            EOF
+            sysctl --system
+            yum install -y kubelet-${VER} kubeadm-${VER} kubectl-${VER}
+            systemctl enable kubelet && systemctl start kubelet
+            cat >/usr/bin/salt_start.sh <<EOF
+            #! /bin/bash
+            set -x
+            exec >/tmp/salt_start.log 2>&1
+            PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin
+            export PATH
+            until bash -c "echo >/dev/tcp/master-${STK}/4505" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
+            until bash -c "echo >/dev/tcp/master-${STK}/4506" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
+            /usr/local/bin/salt-minion -d
+            EOF
+            chmod 755 /usr/bin/salt_start.sh
+            echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
+            echo "@reboot /usr/bin/salt_start.sh" >>/var/spool/cron/root
+            systemctl restart crond
+            kill -9 $(pgrep salt-minion) 
+            sleep 70
+            salt-minion -d
+            echo 'End of task'
+
+  nginxnode:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile:
+        Ref: InstanceProfile
+      ImageId:
+        Ref: ImageId
+      InstanceType: !FindInMap [WInstanceMap, Instancetype, dev]
+      SecurityGroupIds:
+        - Ref: SecurityGroup
+      SubnetId:
+        Fn::ImportValue: PublicSubnet1ID
+      Tags:
+        - Key: Name
+          Value: !Sub nginx-${STK}
+      UserData:
+        Fn::Base64:
+          Fn::Sub: |
+            #!/bin/bash
+            set -x
+            exec >/root/bootstrap.log 2>&1 
+            hostname nginx-${STK}
+            echo "PS1=\`hostname\`:'\$PWD# '" >>/root/.bash_profile
+            echo "set -o vi
+            export PS1" >>/root/.bash_profile
+            echo nginx-${STK}  >/etc/hostname
+            yum install ksh telnet -y
+            #### Validation of python3 & pip3
+            test ! -f /usr/bin/python3 && yum install -y python3
+            test ! -f /usr/bin/pip3 && yum install -y python3-pip
+            #### Install Salt
+            pip3 install salt
+            #### Install and configure ngnix
+            D=$(date +%Y-%m-%d)
+            AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
+            AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
+            export AWS_DEFAULT_REGION
+            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep ${STK}|grep running>/tmp/$$
+            cat /tmp/$$|awk '{print $1, " " , $2}' >>/etc/hosts
+            wrkr2=$(grep worker2 /etc/hosts|awk '{print $1}')
+            wrkr1=$(grep worker1 /etc/hosts|awk '{print $1}')
+            amazon-linux-extras install epel -y
+            yum install nginx -y
+            yum install nginx-mod-stream -y
+            cd /etc/nginx/
+            mv nginx.conf nginx.conf_org
+            cat >nginx.conf <<EOF
+            user nginx;
+            worker_processes auto;
+            error_log /var/log/nginx/error.log;
+            pid /run/nginx.pid;
+            # Load dynamic modules. See /usr/share/doc/nginx/README.dynamic.
+            include /usr/share/nginx/modules/*.conf;
+            events {
+            worker_connections 1024;
+            }
+            stream {
+               upstream backend_80 {
+                   least_conn;
+                   server $wrkr1:32080;
+                   server $wrkr2:32080;
+              }
+ 
+               upstream backend_443 {
+                  least_conn;
+                  server $wrkr1:32443;
+                  server $wrkr2:32443;
+              }
+
+               server {
+                  listen        80;
+                  proxy_pass    backend_80;
+                  proxy_timeout 3s;
+                  proxy_connect_timeout 1s;
+              }
+
+               server {
+                  listen        443;
+                  proxy_pass    backend_443;
+                  proxy_timeout 3s;
+                  proxy_connect_timeout 1s;
+              }
+            }
+            EOF
+            service nginx status
+            service nginx start
+            systemctl enable nginx
+            pubip=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+            #### Salt minion configuration
+            mkdir -p /etc/salt/master.d /etc/salt/minion.d /srv/salt/base /etc/salt/pki/master
+            echo "master: master-${STK}" >/etc/salt/minion.d/master.conf
+            salt-minion -d
+            cat >/usr/bin/salt_start.sh <<EOD
+            #! /bin/bash           
+            set -x
+            exec >/tmp/salt_start.log 2>&1
+            PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin
+            export PATH
+            until bash -c "echo >/dev/tcp/master-${STK}/4505" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
+            until bash -c "echo >/dev/tcp/master-${STK}/4506" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
+            /usr/local/bin/salt-minion -d
+            EOD
+            chmod 755 /usr/bin/salt_start.sh
+            echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
+            echo "@reboot /usr/bin/salt_start.sh" >>/var/spool/cron/root
+            systemctl restart crond
+            kill -9 $(pgrep salt-minion) 
+            sleep 70
+            salt-minion -d
+            echo 'End of task'
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName:
+        Fn::Sub: "${AWS::StackName}-SG"
+      GroupDescription:
+        Fn::Sub: "${AWS::StackName} SG"
+      VpcId:
+        Fn::ImportValue: MyVPCID
+      SecurityGroupIngress:
+      - IpProtocol: -1
+        CidrIp: 0.0.0.0/0
+  SGIngress:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref SecurityGroup
+      IpProtocol: -1
+      SourceSecurityGroupId: !GetAtt SecurityGroup.GroupId
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - Ref: InstanceRole
+
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess
+        - arn:aws:iam::aws:policy/AmazonRoute53FullAccess
