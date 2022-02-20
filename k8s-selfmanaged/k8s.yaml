@@ -147,9 +147,10 @@ Resources:
             helm repo add argo https://argoproj.github.io/argo-helm
             helm repo add traefik https://helm.traefik.io/traefik
             cd /root
-            helm fetch traefik/traefik --untar
-            cd traefik
-            sed -i 's/# nodePort/nodePort/g' values.yaml
+            git clone https://github.com/udhayd/traefik.git
+            cd traefik/chart
+            helm dep build
+            #sed -i 's/# nodePort/nodePort/g' values.yaml
             helm install ingress . -n ingress --create-namespace
             cat >/root/longhorn.sh <<EOD
             kubectl create ns longhorn
