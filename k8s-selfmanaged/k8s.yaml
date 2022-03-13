@@ -199,6 +199,24 @@ Resources:
                  -H "Authorization: Bearer \$KEY" \
                  -H "Content-Type: application/json" \
                  --data '{"type":"'"\$TYPE"'","name":"'"\$NAME"'","content":"'"\$CONTENT"'","proxied":'"\$PROXIED"',"ttl":'"\$TTL"'}' | python -m json.tool;
+
+            #### Update Kubeapi DNS Record
+            NAME="kubeapiserver.groofy.live";
+            DNS_ID=\$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/\$ZONE_ID/dns_records?name=\$NAME" \
+                     -H "X-Auth-Email: \$EMAIL" \
+                     -H "Authorization: Bearer \$KEY" \
+                     -H "Content-Type: application/json" \
+                    | python -m json.tool|grep -w "id"|awk -F':' '{print \$2}'|sed -e 's/"//g' -e 's/,//g' -e 's/ //g')
+            PUB_IP=\$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+            TYPE="A";
+            CONTENT="\$PUB_IP";
+            PROXIED="false";
+            TTL="1";
+            curl -s -X PUT "https://api.cloudflare.com/client/v4/zones/\$ZONE_ID/dns_records/\$DNS_ID" \
+                 -H "Authorization: Bearer \$KEY" \
+                 -H "Content-Type: application/json" \
+                 --data '{"type":"'"\$TYPE"'","name":"'"\$NAME"'","content":"'"\$CONTENT"'","proxied":'"\$PROXIED"',"ttl":'"\$TTL"'}' \
+                 | python -m json.tool;
             EOF
             chmod 755 /usr/bin/kube_svc_patch.sh
             cat >/etc/systemd/system/kubepatch.service <<EOF
