@@ -19,6 +19,7 @@ $ ./provision.sh -n "name of stack"
 Please execute update kubeconfig to access eks cluster.
 
 $ aws eks --region region-code update-kubeconfig --name $CLUSTER_NAME
+
 $ kubectl get nodes
 
 ## To Destroy eks cluster
