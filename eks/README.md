@@ -1,7 +1,7 @@
 # AWS EKS Cluster
 
 ## Introduction:
-Following Script bootraps eks cluster in AWS Cloud , Infrastructure As a Code to create eks cluster with Cloudformation.
+Following Script bootraps eks cluster in AWS Cloud , can be executed from AWS Cloudshell (or) gitbash.
 
 ## PREQUISITES: 
 please execute below steps from aws cloud shell.
@@ -17,6 +17,7 @@ $ ./provision.sh -n "name of stack"
 
 ## To Access the eks cluster
 Please execute update kubeconfig to access eks cluster.
+
 $ aws eks --region region-code update-kubeconfig --name $CLUSTER_NAME
 $ kubectl get nodes
 
