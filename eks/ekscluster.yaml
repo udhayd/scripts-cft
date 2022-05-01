@@ -1,0 +1,63 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Amazon EKS - Cluster"
+
+Parameters:
+  EKSClusterName:
+    Type: String
+    MinLength: 3
+  KubernetesVersion:
+    Type: String
+    Description: "Version of Kubernetes Cluster"
+
+Resources:
+  EKSServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service: eks.amazonaws.com
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+
+  ClusterControlPlaneSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Cluster communication with worker nodes
+      VpcId: !ImportValue MyVPCID
+      SecurityGroupEgress:
+        - Description: Cluster communication with worker nodes
+          CidrIp: 0.0.0.0/0
+          IpProtocol: "-1"
+          FromPort: 0
+          ToPort: 65535
+
+  EKSCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Ref EKSClusterName
+      RoleArn: !GetAtt EKSServiceRole.Arn
+      Version: !Ref KubernetesVersion
+      ResourcesVpcConfig:
+        SecurityGroupIds:
+          - !GetAtt ClusterControlPlaneSecurityGroup.GroupId
+        SubnetIds: 
+          - !ImportValue PublicSubnet1ID
+          - !ImportValue PublicSubnet2ID
+
+Outputs:
+  ClusterControlPlaneSecurityGroup:
+    Export:
+      Name: !Sub "${EKSClusterName}-ClusterControlPlaneSecurityGroup"
+    Value: !Ref ClusterControlPlaneSecurityGroup
+  EKSClusterName:
+    Export:
+      Name: !Sub "${AWS::StackName}-EKSCluster"
+    Value: !Ref EKSCluster
+  EKSClusterEndpoint:
+    Export:
+      Name: !Sub "${EKSClusterName}-EKSClusterEndpoint"
+    Value: !GetAtt EKSCluster.Endpoint
