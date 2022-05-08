@@ -29,7 +29,7 @@ then
    cd ../vpc
    ./provision.sh -n $2-vpc
    echo ""
-   cd ../ 
+   cd ../eks
 fi
 echo -e '\n \t' "Executing Stack"
 echo -e '\n \t' ""
