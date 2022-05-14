@@ -24,7 +24,7 @@ fi
 #### Verify eks tools
 eks_verify_tools_installed
 
-set -ex
+set -x
 #### To validate AWS Credentials
 aws cloudformation list-exports|grep "MyVPCID" >/dev/null 2>&1
 if [ $? -ne 0 ]
@@ -39,6 +39,7 @@ fi
 echo -e '\n \t' "Executing Stack"
 echo -e '\n \t' ""
 
+set -e
 #### Variable Initialization
 echo "WORKERNODE_STACK_NAME=$2-worker
 CLUSTER_STACK_NAME=$2-cluster" >vars.sh
