@@ -31,3 +31,7 @@ function eks_verify_tools_installed() {
 function eks_configure_kubeconfig() {
    aws eks --region ${AWS_REGION} update-kubeconfig --name ${CLUSTER_NAME}
 }
+
+function eks_configure_auth() {
+   cat auth.yaml | envsubst | kubectl apply -f -
+}
