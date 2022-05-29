@@ -87,3 +87,7 @@ data:
         - system:nodes
 EOF
 kubectl apply -f auth.yaml
+rm auth.yaml
+
+#### Install EBS CSI Driver
+bash ebs-csi.sh

@@ -26,6 +26,13 @@ function eks_verify_tools_installed() {
       echo "Link: https://helm.sh/docs/intro/install"
       exit 1
    fi
+
+   if ! [ -x "$(command -v eksctl)" ]; then
+      echo "eksctl is not installed"
+      echo "Please install eksctl and try again."
+      echo "Link: https://docs.aws.amazon.com/eks/latest/userguide/eksctl.html"
+      exit 1
+   fi
 }
 
 function eks_configure_kubeconfig() {
