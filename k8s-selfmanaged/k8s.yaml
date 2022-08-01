@@ -444,6 +444,13 @@ Resources:
             AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
             AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
             export AWS_DEFAULT_REGION
+            i=$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text| grep ${STK} | wc -l)
+            until [ $i == 4 ]
+            do
+              echo "Waiting for worker nodes to be created";
+              sleep 3;
+              i=$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text| grep ${STK} | wc -l)
+            done
             aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep ${STK}|grep running>/tmp/$$
             cat /tmp/$$|awk '{print $1, " " , $2}' >>/etc/hosts
             wrkr2=$(grep worker2 /etc/hosts|awk '{print $1}')
