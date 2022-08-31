@@ -529,9 +529,9 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupName:
-        Fn::Sub: "${AWS::StackName}-SG"
+        Fn::Sub: "${AWS::StackName}-LB-SG"
       GroupDescription:
-        Fn::Sub: "${AWS::StackName} SG"
+        Fn::Sub: "${AWS::StackName} LB SG"
       VpcId:
         Fn::ImportValue: MyVPCID
       SecurityGroupIngress:
@@ -544,9 +544,9 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupName:
-        Fn::Sub: "${AWS::StackName}-SG"
+        Fn::Sub: "${AWS::StackName}-K8S-SG"
       GroupDescription:
-        Fn::Sub: "${AWS::StackName} SG"
+        Fn::Sub: "${AWS::StackName} K8S SG"
       VpcId:
         Fn::ImportValue: MyVPCID
   K8SSGIngress:
