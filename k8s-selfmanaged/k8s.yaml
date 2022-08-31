@@ -44,7 +44,7 @@ Resources:
         Ref: ImageId
       InstanceType: !Sub ${MTYPE}
       SecurityGroupIds:
-        - Ref: SecurityGroup
+        - Ref: K8SSecurityGroup
       SubnetId:
         Fn::ImportValue: PublicSubnet1ID
       Tags:
@@ -257,7 +257,7 @@ Resources:
       #InstanceType: !FindInMap [WInstanceMap, Instancetype, dev]
       InstanceType: !Sub ${WTYPE}
       SecurityGroupIds:
-        - Ref: SecurityGroup
+        - Ref: K8SSecurityGroup
       SubnetId:
         Fn::ImportValue: PublicSubnet1ID
       Tags:
@@ -337,7 +337,7 @@ Resources:
         Ref: ImageId
       InstanceType: !Sub ${WTYPE}
       SecurityGroupIds:
-        - Ref: SecurityGroup
+        - Ref: K8SSecurityGroup
       SubnetId:
         Fn::ImportValue: PublicSubnet1ID
       Tags:
@@ -416,7 +416,7 @@ Resources:
         Ref: ImageId
       InstanceType: !FindInMap [WInstanceMap, Instancetype, dev]
       SecurityGroupIds:
-        - Ref: SecurityGroup
+        - Ref: LBSecurityGroup
       SubnetId:
         Fn::ImportValue: PublicSubnet1ID
       Tags:
@@ -525,7 +525,7 @@ Resources:
             salt-minion -d
             echo 'End of task'
 
-  SecurityGroup:
+  LBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupName:
@@ -535,14 +535,32 @@ Resources:
       VpcId:
         Fn::ImportValue: MyVPCID
       SecurityGroupIngress:
-      - IpProtocol: -1
+      - IpProtocol: TCP
+        FromPort: 443
+        ToPort: 443
         CidrIp: 0.0.0.0/0
-  SGIngress:
+
+  K8SSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName:
+        Fn::Sub: "${AWS::StackName}-SG"
+      GroupDescription:
+        Fn::Sub: "${AWS::StackName} SG"
+      VpcId:
+        Fn::ImportValue: MyVPCID
+  K8SSGIngress:
     Type: 'AWS::EC2::SecurityGroupIngress'
     Properties:
-      GroupId: !Ref SecurityGroup
+      GroupId: !Ref K8SSecurityGroup
       IpProtocol: -1
-      SourceSecurityGroupId: !GetAtt SecurityGroup.GroupId
+      SourceSecurityGroupId: !GetAtt K8SSecurityGroup.GroupId
+  LBSGIngress:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref LBSecurityGroup
+      IpProtocol: -1
+      SourceSecurityGroupId: !GetAtt LBSecurityGroup.GroupId
 
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
