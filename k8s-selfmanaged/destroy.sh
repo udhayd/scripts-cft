@@ -20,6 +20,7 @@ then
    for i in $(grep STACK_NAME vars.sh|awk -F'=' '{print $2}')
    do
    aws cloudformation delete-stack --stack-name $i
+   aws cloudformation wait stack-delete-complete --stack-name $i
    done
 else
    echo -e '\n \t' "No Stack Name Found in vars.sh file"
