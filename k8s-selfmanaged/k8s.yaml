@@ -59,11 +59,17 @@ Resources:
             cd /root
             hostname master-${STK}
             echo master-${STK}  >/etc/hostname
-            echo "
+            cat >>/root/.bash_profile <<EOF
             alias c=clear
             alias kc=kubectl
-            set -o vi" >>/root/.bash_profile
-            echo "PS1=\`hostname\`:'\$PWD# '" >>/root/.bash_profile
+            set -o vi
+            PS1=\$(hostname):'\$PWD# '
+            export PS1
+            ssh-exec () 
+            {
+              for i in master worker1 worker2;do  echo;echo "******\$i******";ssh -o StrictHostKeyChecking=no \$i \$@;echo "******************";done
+            }
+            EOF
             yum install ksh git telnet docker -y
             #### Validation of python3 & pip3
             test ! -f /usr/bin/python3 && yum install -y python3
@@ -82,7 +88,10 @@ Resources:
             AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
             export AWS_DEFAULT_REGION
             aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep ${STK}|grep running>/tmp/$$
-            cat /tmp/$$|awk '{print $1, " " , $2}' >>/etc/hosts
+            sed -i 's/master.*/&  master/' /tmp/$$
+            sed -i 's/worker1.*/&  worker1/' /tmp/$$
+            sed -i 's/worker2.*/&  worker2/' /tmp/$$
+            cat /tmp/$$|awk '{print $1, " " , $2," " , $5}' >>/etc/hosts
             salt-minion -d;salt-master -d
             sleep 10
             kill -9 $(pgrep salt-minion) $(pgrep salt-master)
@@ -270,9 +279,13 @@ Resources:
             set -x
             exec >/root/bootstrap.log 2>&1 
             hostname worker1-${STK}
-            echo "PS1=\`hostname\`:'\$PWD# '" >>/root/.bash_profile
-            echo "set -o vi
-            export PS1" >>/root/.bash_profile
+            cat >>/root/.bash_profile <<EOF
+            alias c=clear
+            alias kc=kubectl
+            set -o vi
+            PS1=\$(hostname):'\$PWD# '
+            export PS1
+            EOF
             echo worker1-${STK}  >/etc/hostname
             yum install ksh telnet docker -y
             #### Validation of python3 & pip3
@@ -350,10 +363,14 @@ Resources:
             set -x
             exec >/root/bootstrap.log 2>&1
             hostname worker2-${STK}
-            echo "PS1=\`hostname\`:'\$PWD# '" >>/root/.bash_profile
-            echo "set -o vi
-            export PS1" >>/root/.bash_profile
             echo worker2-${STK}  >/etc/hostname
+            cat >>/root/.bash_profile <<EOF
+            alias c=clear
+            alias kc=kubectl
+            set -o vi
+            PS1=\$(hostname):'\$PWD# '
+            export PS1
+            EOF
             yum install ksh telnet docker -y
             #### Validation of python3 & pip3
             test ! -f /usr/bin/python3 && yum install -y python3
@@ -429,10 +446,14 @@ Resources:
             set -x
             exec >/root/bootstrap.log 2>&1 
             hostname nginx-${STK}
-            echo "PS1=\`hostname\`:'\$PWD# '" >>/root/.bash_profile
-            echo "set -o vi
-            export PS1" >>/root/.bash_profile
             echo nginx-${STK}  >/etc/hostname
+            cat >>/root/.bash_profile <<EOF
+            alias c=clear
+            alias kc=kubectl
+            set -o vi
+            PS1=\$(hostname):'\$PWD# '
+            export PS1
+            EOF
             yum install ksh telnet -y
             #### Validation of python3 & pip3
             test ! -f /usr/bin/python3 && yum install -y python3
