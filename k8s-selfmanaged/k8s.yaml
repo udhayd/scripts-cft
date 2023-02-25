@@ -193,14 +193,14 @@ Resources:
             #### Update DNS Record
             KEY="Gs7g6lnteDZ5BzJSxzGIbohrhXhiVcNx02rPbV7_";
             ZONE_ID="87faf9eaaccf4a5c67882d073e9d438f";
-            NAME="*.groofy.live";
+            NAME="*.groofy.cloud";
             SDNS_ID=\$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/\$ZONE_ID/dns_records?name=\$NAME" \
                  -H "Authorization: Bearer \$KEY" \
                  -H "Content-Type: application/json" \
                  | python -m json.tool|grep -w "id"|awk -F':' '{print \$2}'|sed -e 's/"//g' -e 's/,//g' -e 's/ //g')                                        
             DNS_ID="\$SDNS_ID";
             TYPE="A";
-            NAME="*.groofy.live";
+            NAME="*.groofy.cloud";
             CONTENT="\$lbip";
             PROXIED="false";
             TTL="1";
@@ -210,7 +210,7 @@ Resources:
                  --data '{"type":"'"\$TYPE"'","name":"'"\$NAME"'","content":"'"\$CONTENT"'","proxied":'"\$PROXIED"',"ttl":'"\$TTL"'}' | python -m json.tool;
 
             #### Update Kubeapi DNS Record
-            NAME="kubeapiserver.groofy.live";
+            NAME="kubeapiserver.groofy.cloud";
             DNS_ID=\$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/\$ZONE_ID/dns_records?name=\$NAME" \
                      -H "X-Auth-Email: \$EMAIL" \
                      -H "Authorization: Bearer \$KEY" \
@@ -252,7 +252,7 @@ Resources:
             cd microservices-demo
             kubectl create ns gapp
             kubectl apply -f ./release/kubernetes-manifests.yaml -n gapp
-            kubectl create ing ingress --rule=gapp.groofy.live/*=frontend:80 -n gapp
+            kubectl create ing ingress --rule=gapp.groofy.cloud/*=frontend:80 -n gapp
             echo 'End of Task'
 
 
