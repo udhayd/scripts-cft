@@ -192,7 +192,7 @@ Resources:
 
             #### Update DNS Record
             KEY="Gs7g6lnteDZ5BzJSxzGIbohrhXhiVcNx02rPbV7_";
-            ZONE_ID="87faf9eaaccf4a5c67882d073e9d438f";
+            ZONE_ID="b34a888ba81df802d82fcdaa8a8c03b1";
             NAME="*.groofy.cloud";
             SDNS_ID=\$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/\$ZONE_ID/dns_records?name=\$NAME" \
                  -H "Authorization: Bearer \$KEY" \
