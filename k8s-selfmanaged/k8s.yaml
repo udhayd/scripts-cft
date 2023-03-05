@@ -248,6 +248,10 @@ Resources:
             cat /root/.ssh/id_rsa.pub >>/root/.ssh/authorized_keys
             chmod 600 /root/.ssh/authorized_keys
             salt-cp '*' /root/.ssh/authorized_keys /root/.ssh/authorized_keys
+            git clone https://github.com/udhayd/argocd
+            cd argocd/chart
+            helm dep update
+            helm install argocd . -n argocd --create-namespace
             git clone https://github.com/GoogleCloudPlatform/microservices-demo.git
             cd microservices-demo
             kubectl create ns gapp
