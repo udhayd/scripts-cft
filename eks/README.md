@@ -13,7 +13,7 @@ $ git clone https://github.com/udhayd/scripts-cft
 
 $ cd scripts-cft/eks
 
-$ ./provision.sh -n "name of stack"
+$ ./provision.sh -n "name of stack" &
 
 ## To Access the eks cluster
 Please execute update kubeconfig to access eks cluster.
