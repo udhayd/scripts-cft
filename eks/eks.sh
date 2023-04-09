@@ -1,17 +1,6 @@
 #!/bin/bash
 
-function version() {
-   echo "$@" | awk -F. '{ printf("%d%03d%03d%03d\n", $1,$2,$3,$4); }';
-}
-
 function eks_verify_tools_installed() {
-   AWSCLI_VERSION=$(aws --version | cut -d" " -f1 | cut -d"/" -f2)
-   if [ $(version $AWSCLI_VERSION) -lt $(version "1.16.156") ]; then
-        echo "awscli installed version $AWSCLI_VERSION is older than required version 1.16.156"
-	echo "Please run AWS@Apple setup again to ugrade."
-        echo "Link: https://github.pie.apple.com/CloudTech/aws-apple/tree/main/setup"
-        exit 1
-   fi
 
    if ! [ -x "$(command -v kubectl)" ]; then
       echo "kubectl is not installed"
@@ -22,16 +11,16 @@ function eks_verify_tools_installed() {
 
    if ! [ -x "$(command -v helm)" ]; then
       echo "helm is not installed"
-      echo "Please install helm and try again."
+      echo "Installing helm and try again."
       echo "Link: https://helm.sh/docs/intro/install"
-      exit 1
+      curl -s https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 |sudo bash
    fi
 
    if ! [ -x "$(command -v eksctl)" ]; then
       echo "eksctl is not installed"
       echo "Please install eksctl and try again."
       echo "Link: https://docs.aws.amazon.com/eks/latest/userguide/eksctl.html"
-      exit 1
+      curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | sudo tar xz -C /usr/bin
    fi
 }
 
@@ -39,6 +28,3 @@ function eks_configure_kubeconfig() {
    aws eks --region ${AWS_REGION} update-kubeconfig --name ${CLUSTER_NAME}
 }
 
-function eks_configure_auth() {
-   cat auth.yaml | envsubst | kubectl apply -f -
-}
