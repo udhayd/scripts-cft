@@ -69,7 +69,7 @@ export NODE_INSTANCE_ROLE_ARN=$(aws cloudformation --output=text list-exports --
 #### Update kubeconfig
 eks_configure_kubeconfig
 
-#### Update aws-auth settings
+#### Update aws-auth settings for UnManaged WorkerNode
 cat <<EOF >auth.yaml
 ---
 apiVersion: v1

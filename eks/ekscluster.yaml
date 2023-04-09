@@ -58,9 +58,8 @@ Metadata:
           - NodeGroupName
 
 Conditions: 
-  CreateManagedNode: !Equals [ !Ref ManagedNode, true ]
-  CreateSelfManagedNode:
-    !Not [!Equals [!Ref ManagedNode, true]]
+  ManagedNodeGroup: !Equals [ !Ref ManagedNode, true ]
+  NotManagedNodeGroup: !Not [!Equals [!Ref ManagedNode, true]]
 
 Resources:
   EKSServiceRole:
@@ -194,13 +193,17 @@ Resources:
       ToPort: 443
       FromPort: 443
 
+  ###########################################
+  ###        Managed Worker Nodes         ###
+  ###########################################      
   WorkerNodegroup:
     Type: AWS::EKS::Nodegroup
-    Condition: CreateManagedNode
+    Condition: ManagedNodeGroup
     DependsOn: [EKSCluster]
     Properties:
       ClusterName: !Sub ${EKSClusterName}
       NodeRole: !GetAtt NodeInstanceRole.Arn
+      Version: !Ref KubernetesVersion
       ScalingConfig:
         MinSize: !Ref NodeAutoScalingGroupMinSize
         DesiredSize: !Ref NodeAutoScalingGroupDesiredCapacity
@@ -211,9 +214,12 @@ Resources:
       Tags:
         Name: "WorkerNodes"
 
-  NodeGroup:
+  ##########################################
+  ###      Unmanaged Worker Nodes        ###
+  ##########################################
+  NodeASG:
     Type: AWS::AutoScaling::AutoScalingGroup
-    Condition: CreateSelfManagedNode
+    Condition: NotManagedNodeGroup
     DependsOn: [EKSCluster]
     Properties:
       AutoScalingGroupName: !Sub ${AWS::StackName}-asg
@@ -238,11 +244,11 @@ Resources:
       AutoScalingRollingUpdate:
         MaxBatchSize: 1
         MinInstancesInService: !Ref NodeAutoScalingGroupDesiredCapacity
-        PauseTime: PT5M
+        PauseTime: PT3M
 
   NodeLaunchTemplate:
      Type: AWS::EC2::LaunchTemplate
-     Condition: CreateSelfManagedNode
+     Condition: NotManagedNodeGroup
      DependsOn: [EKSCluster]
      Properties:
        LaunchTemplateName: !Sub ${AWS::StackName}-lt
@@ -271,7 +277,7 @@ Resources:
                #!/bin/bash
                set -o xtrace
                /etc/eks/bootstrap.sh ${EKSClusterName} ${BootstrapArguments}
-               /opt/aws/bin/cfn-signal --exit-code $? --stack  ${AWS::StackName} --resource NodeGroup  --region ${AWS::Region}
+               /opt/aws/bin/cfn-signal --exit-code $? --stack  ${AWS::StackName} --resource NodeASG  --region ${AWS::Region}
 
 Outputs:
   ClusterControlPlaneSecurityGroup:
