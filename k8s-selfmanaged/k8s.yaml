@@ -532,7 +532,7 @@ Resources:
                server {
                   listen       6443;
                   proxy_pass   backend_6443;
-                  proxy_timeoute 3s;
+                  proxy_timeout 3s;
                   proxy_connect_timeout 1s;
               }
             }
