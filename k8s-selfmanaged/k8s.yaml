@@ -120,7 +120,7 @@ Resources:
             sysctl --system
             yum install -y kubelet-${VER} kubeadm-${VER} kubectl-${VER}
             systemctl enable kubelet && systemctl start kubelet
-            kubeadm init --pod-network-cidr=10.244.0.0/16
+            kubeadm init --pod-network-cidr=10.244.0.0/16 --kubernetes-version=${VER} --control-plane-endpoint=kubeapi.groofy.cloud
             mkdir -p /root/.kube
             cp -i /etc/kubernetes/admin.conf /root/.kube/config
             chown $(id -u):$(id -g) /root/.kube/config
@@ -210,7 +210,7 @@ Resources:
                  --data '{"type":"'"\$TYPE"'","name":"'"\$NAME"'","content":"'"\$CONTENT"'","proxied":'"\$PROXIED"',"ttl":'"\$TTL"'}' | python -m json.tool;
 
             #### Update Kubeapi DNS Record
-            NAME="kubeapiserver.groofy.cloud";
+            NAME="kubeapi.groofy.cloud";
             DNS_ID=\$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/\$ZONE_ID/dns_records?name=\$NAME" \
                      -H "X-Auth-Email: \$EMAIL" \
                      -H "Authorization: Bearer \$KEY" \
@@ -218,7 +218,7 @@ Resources:
                     | python -m json.tool|grep -w "id"|awk -F':' '{print \$2}'|sed -e 's/"//g' -e 's/,//g' -e 's/ //g')
             PUB_IP=\$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
             TYPE="A";
-            CONTENT="\$PUB_IP";
+            CONTENT="\$lbip";
             PROXIED="false";
             TTL="1";
             curl -s -X PUT "https://api.cloudflare.com/client/v4/zones/\$ZONE_ID/dns_records/\$DNS_ID" \
@@ -480,6 +480,7 @@ Resources:
             cat /tmp/$$|awk '{print $1, " " , $2}' >>/etc/hosts
             wrkr2=$(grep worker2 /etc/hosts|awk '{print $1}')
             wrkr1=$(grep worker1 /etc/hosts|awk '{print $1}')
+            mastr=$(grep master /etc/hosts|awk '{print $1}')
             amazon-linux-extras install epel -y
             yum install nginx -y
             yum install nginx-mod-stream -y
@@ -508,6 +509,11 @@ Resources:
                   server $wrkr2:32443;
               }
 
+               upstream backend_6443 {
+                  least_conn;
+                  server $mastr:6443;
+              }
+
                server {
                   listen        80;
                   proxy_pass    backend_80;
@@ -519,6 +525,13 @@ Resources:
                   listen        443;
                   proxy_pass    backend_443;
                   proxy_timeout 3s;
+                  proxy_connect_timeout 1s;
+              }
+
+               server {
+                  listen       6443;
+                  proxy_pass   backend_6443;
+                  proxy_timeoute 3s;
                   proxy_connect_timeout 1s;
               }
             }
@@ -563,6 +576,10 @@ Resources:
       - IpProtocol: TCP
         FromPort: 443
         ToPort: 443
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: TCP
+        FromPort: 6443
+        ToPort: 6443  
         CidrIp: 0.0.0.0/0
 
   K8SSecurityGroup:
