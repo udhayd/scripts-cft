@@ -120,55 +120,6 @@ Resources:
             sysctl --system
             yum install -y kubelet-${VER} kubeadm-${VER} kubectl-${VER}
             systemctl enable kubelet && systemctl start kubelet
-            kubeadm init --pod-network-cidr=10.244.0.0/16 --kubernetes-version=${VER} --control-plane-endpoint=kubeapi.groofy.cloud
-            mkdir -p /root/.kube
-            cp -i /etc/kubernetes/admin.conf /root/.kube/config
-            chown $(id -u):$(id -g) /root/.kube/config
-            export KUBECONFIG=/etc/kubernetes/admin.conf
-            kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
-            sleep 10
-            echo "Y"|salt-key -A
-            sleep 40
-            ctlhost=$(hostname -i)
-            token=$(kubeadm token list |sed 1d |awk '{print $1}')
-            sha=$(openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt|openssl rsa -pubin -outform der 2>/dev/null|openssl dgst -sha256 -hex|sed 's/^.* //')
-            salt worker1-${STK} cmd.run "kubeadm join --token $token $ctlhost:6443 --discovery-token-ca-cert-hash sha256:$sha"
-            salt worker2-${STK} cmd.run "kubeadm join --token $token $ctlhost:6443 --discovery-token-ca-cert-hash sha256:$sha"
-            sleep 10
-            kubectl get nodes
-            cat >/usr/bin/salt_start.sh <<EOF
-            #! /bin/bash
-            set -x
-            exec >/tmp/salt_start.log 2>&1
-            PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin
-            export PATH
-            until bash -c "echo >/dev/tcp/master-${STK}/4505" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
-            until bash -c "echo >/dev/tcp/master-${STK}/4506" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
-            /usr/local/bin/salt-minion -d
-            EOF
-            chmod 755 /usr/bin/salt_start.sh
-            echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
-            echo "@reboot export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin;salt-master -d --log-file=/var/log/salt-master.log --log-file-level='all'" >>/var/spool/cron/root
-            echo "@reboot /usr/bin/salt_start.sh" >>/var/spool/cron/root
-            systemctl restart crond
-            #### Helm Installation
-            curl -s https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3|bash
-            helm repo add argo https://argoproj.github.io/argo-helm
-            helm repo add traefik https://helm.traefik.io/traefik
-            cd /root
-            git clone https://github.com/udhayd/traefik.git
-            cd traefik/chart
-            helm dep build
-            #sed -i 's/# nodePort/nodePort/g' values.yaml
-            helm install ingress . -n ingress --create-namespace
-            cat >/root/longhorn.sh <<EOD
-            kubectl create ns longhorn
-            kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/v1.2.0/deploy/prerequisite/longhorn-iscsi-installation.yaml
-            helm repo add longhorn https://charts.longhorn.io
-            helm repo update
-            helm install longhorn longhorn/longhorn -n longhorn
-            EOD
-            chmod 755 /root/longhorn.sh
             cat >/usr/bin/kube_svc_patch.sh <<EOF
             #! /bin/bash
             #### Script to update the Loadbalancer IP for IngressController
@@ -182,13 +133,13 @@ Resources:
             #### Update LB IP
             until aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PublicIpAddress,Tags[?Key==\`Name\`].Value|[0],LaunchTime,State.Name]' --output text|grep ${STK}|grep -i running|grep nginx &> /dev/null; do sleep 10; done
             lbip=\$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PublicIpAddress,Tags[?Key==\`Name\`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep nginx|awk '{print \$1}')
-            until kubectl get ns &> /dev/null; do sleep 10; done
-            kubectl patch svc ingress-traefik -p '{"spec":{"externalIPs": null}}' -n ingress
-            echo "
-              spec:
-                externalIPs:
-                   - \$lbip" >/tmp/spec.yaml
-            kubectl patch svc ingress-traefik --type merge --patch  "\$(cat /tmp/spec.yaml)" -n ingress
+            #until kubectl get ns &> /dev/null; do sleep 10; done
+            #kubectl patch svc ingress-traefik -p '{"spec":{"externalIPs": null}}' -n ingress
+            #echo "
+            #  spec:
+            #    externalIPs:
+            #       - \$lbip" >/tmp/spec.yaml
+            #kubectl patch svc ingress-traefik --type merge --patch  "\$(cat /tmp/spec.yaml)" -n ingress
 
             #### Update DNS Record
             KEY="Gs7g6lnteDZ5BzJSxzGIbohrhXhiVcNx02rPbV7_";
@@ -244,6 +195,56 @@ Resources:
             systemctl daemon-reload
             systemctl enable kubepatch.service
             systemctl start kubepatch.service
+            sleep 10
+            kubeadm init --pod-network-cidr=10.244.0.0/16 --kubernetes-version=${VER} --control-plane-endpoint=kubeapi.groofy.cloud
+            mkdir -p /root/.kube
+            cp -i /etc/kubernetes/admin.conf /root/.kube/config
+            chown $(id -u):$(id -g) /root/.kube/config
+            export KUBECONFIG=/etc/kubernetes/admin.conf
+            kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+            sleep 10
+            echo "Y"|salt-key -A
+            sleep 20
+            ctlhost=$(hostname -i)
+            token=$(kubeadm token list |sed 1d |awk '{print $1}')
+            sha=$(openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt|openssl rsa -pubin -outform der 2>/dev/null|openssl dgst -sha256 -hex|sed 's/^.* //')
+            salt worker1-${STK} cmd.run "kubeadm join --token $token $ctlhost:6443 --discovery-token-ca-cert-hash sha256:$sha"
+            salt worker2-${STK} cmd.run "kubeadm join --token $token $ctlhost:6443 --discovery-token-ca-cert-hash sha256:$sha"
+            sleep 10
+            kubectl get nodes
+            cat >/usr/bin/salt_start.sh <<EOF
+            #! /bin/bash
+            set -x
+            exec >/tmp/salt_start.log 2>&1
+            PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin
+            export PATH
+            until bash -c "echo >/dev/tcp/master-${STK}/4505" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
+            until bash -c "echo >/dev/tcp/master-${STK}/4506" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
+            /usr/local/bin/salt-minion -d
+            EOF
+            chmod 755 /usr/bin/salt_start.sh
+            echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
+            echo "@reboot export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin;salt-master -d --log-file=/var/log/salt-master.log --log-file-level='all'" >>/var/spool/cron/root
+            echo "@reboot /usr/bin/salt_start.sh" >>/var/spool/cron/root
+            systemctl restart crond
+            #### Helm Installation
+            curl -s https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3|bash
+            helm repo add argo https://argoproj.github.io/argo-helm
+            helm repo add traefik https://helm.traefik.io/traefik
+            cd /root
+            git clone https://github.com/udhayd/traefik.git
+            cd traefik/chart
+            helm dep build
+            #sed -i 's/# nodePort/nodePort/g' values.yaml
+            helm install ingress . -n ingress --create-namespace
+            cat >/root/longhorn.sh <<EOD
+            kubectl create ns longhorn
+            kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/v1.2.0/deploy/prerequisite/longhorn-iscsi-installation.yaml
+            helm repo add longhorn https://charts.longhorn.io
+            helm repo update
+            helm install longhorn longhorn/longhorn -n longhorn
+            EOD
+            chmod 755 /root/longhorn.sh
             ssh-keygen -t rsa -f /root/.ssh/id_rsa -q -P ""
             cat /root/.ssh/id_rsa.pub >>/root/.ssh/authorized_keys
             chmod 600 /root/.ssh/authorized_keys
