@@ -287,11 +287,14 @@ Resources:
             EOF
             echo worker1-${STK}  >/etc/hostname
             yum install ksh telnet docker -y
+            
             #### Validation of python3 & pip3
             test ! -f /usr/bin/python3 && yum install -y python3
             test ! -f /usr/bin/pip3 && yum install -y python3-pip
+            
             #### Install Salt
             pip3 install salt
+            
             #### Salt minion configuration
             mkdir -p /etc/salt/master.d /etc/salt/minion.d /srv/salt/base /etc/salt/pki/master
             echo "master: master-${STK}" >/etc/salt/minion.d/master.conf
@@ -302,6 +305,7 @@ Resources:
             aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep ${STK}|grep running>/tmp/$$
             cat /tmp/$$|awk '{print $1, " " , $2}' >>/etc/hosts
             salt-minion -d
+            
             #### Kubernetes Install
             systemctl enable docker && systemctl start docker
             cat <<EOF > /etc/yum.repos.d/kubernetes.repo
@@ -320,19 +324,7 @@ Resources:
             sysctl --system
             yum install -y kubelet-${VER} kubeadm-${VER} kubectl-${VER}
             systemctl enable kubelet && systemctl start kubelet
-            cat >/usr/bin/salt_start.sh <<EOF
-            #! /bin/bash
-            set -x
-            exec >/tmp/salt_start.log 2>&1
-            PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin
-            export PATH
-            until bash -c "echo >/dev/tcp/master-${STK}/4505" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
-            until bash -c "echo >/dev/tcp/master-${STK}/4506" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
-            /usr/local/bin/salt-minion -d
-            EOF
-            chmod 755 /usr/bin/salt_start.sh
             echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
-            echo "@reboot /usr/bin/salt_start.sh" >>/var/spool/cron/root
             systemctl restart crond
             kill -9 $(pgrep salt-minion) 
             sleep 70
@@ -371,11 +363,14 @@ Resources:
             export PS1
             EOF
             yum install ksh telnet docker -y
+            
             #### Validation of python3 & pip3
             test ! -f /usr/bin/python3 && yum install -y python3
             test ! -f /usr/bin/pip3 && yum install -y python3-pip
+            
             #### Install Salt
             pip3 install salt
+            
             #### Salt minion configuration
             mkdir -p /etc/salt/master.d /etc/salt/minion.d /srv/salt/base /etc/salt/pki/master
             echo "master: master-${STK}" >/etc/salt/minion.d/master.conf
@@ -386,6 +381,7 @@ Resources:
             aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep ${STK}|grep running>/tmp/$$
             cat /tmp/$$|awk '{print $1, " " , $2}' >>/etc/hosts
             salt-minion -d
+            
             #### Kubernetes Installation
             systemctl enable docker && systemctl start docker
             cat <<EOF > /etc/yum.repos.d/kubernetes.repo
@@ -404,19 +400,7 @@ Resources:
             sysctl --system
             yum install -y kubelet-${VER} kubeadm-${VER} kubectl-${VER}
             systemctl enable kubelet && systemctl start kubelet
-            cat >/usr/bin/salt_start.sh <<EOF
-            #! /bin/bash
-            set -x
-            exec >/tmp/salt_start.log 2>&1
-            PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin
-            export PATH
-            until bash -c "echo >/dev/tcp/master-${STK}/4505" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
-            until bash -c "echo >/dev/tcp/master-${STK}/4506" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
-            /usr/local/bin/salt-minion -d
-            EOF
-            chmod 755 /usr/bin/salt_start.sh
             echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
-            echo "@reboot /usr/bin/salt_start.sh" >>/var/spool/cron/root
             systemctl restart crond
             kill -9 $(pgrep salt-minion) 
             sleep 70
@@ -454,11 +438,14 @@ Resources:
             export PS1
             EOF
             yum install ksh telnet -y
+            
             #### Validation of python3 & pip3
             test ! -f /usr/bin/python3 && yum install -y python3
             test ! -f /usr/bin/pip3 && yum install -y python3-pip
+            
             #### Install Salt
             pip3 install salt
+            
             #### Install and configure ngnix
             D=$(date +%Y-%m-%d)
             AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
@@ -479,6 +466,8 @@ Resources:
             amazon-linux-extras install epel -y
             yum install nginx -y
             yum install nginx-mod-stream -y
+         
+            #### Nginx Loadbalancer Configuration
             cd /etc/nginx/
             mv nginx.conf nginx.conf_org
             cat >nginx.conf <<EOF
@@ -535,23 +524,12 @@ Resources:
             service nginx start
             systemctl enable nginx
             pubip=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+            
             #### Salt minion configuration
             mkdir -p /etc/salt/master.d /etc/salt/minion.d /srv/salt/base /etc/salt/pki/master
             echo "master: master-${STK}" >/etc/salt/minion.d/master.conf
             salt-minion -d
-            cat >/usr/bin/salt_start.sh <<EOD
-            #! /bin/bash           
-            set -x
-            exec >/tmp/salt_start.log 2>&1
-            PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin
-            export PATH
-            until bash -c "echo >/dev/tcp/master-${STK}/4505" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
-            until bash -c "echo >/dev/tcp/master-${STK}/4506" &> /dev/null; do echo "Waiting for command to start";sleep 10; done
-            /usr/local/bin/salt-minion -d
-            EOD
-            chmod 755 /usr/bin/salt_start.sh
             echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
-            echo "@reboot /usr/bin/salt_start.sh" >>/var/spool/cron/root
             systemctl restart crond
             kill -9 $(pgrep salt-minion) 
             sleep 70
@@ -572,10 +550,12 @@ Resources:
         FromPort: 443
         ToPort: 443
         CidrIp: 0.0.0.0/0
+        Description: "To Access Application in K8s cluster"
       - IpProtocol: TCP
         FromPort: 6443
         ToPort: 6443  
         CidrIp: 0.0.0.0/0
+        Description: "To Access Kubeapi Server"
 
   K8SSecurityGroup:
     Type: AWS::EC2::SecurityGroup
