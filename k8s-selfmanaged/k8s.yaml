@@ -212,7 +212,6 @@ Resources:
             sleep 10
             kubectl get nodes
             echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
-            echo "@reboot export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/root/bin;salt-master -d --log-file=/var/log/salt-master.log --log-file-level='all'" >>/var/spool/cron/root
             systemctl restart crond
             
             #### Argocd/Traefik Deployments
@@ -224,7 +223,7 @@ Resources:
             cd traefik/chart
             helm dep build
             helm install ingress . -n ingress --create-namespace
-            lbip=$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PublicIpAddress,Tags[?Key==\`Name\`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep nginx|awk '{print \$1}')
+            lbip=$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PublicIpAddress,Tags[?Key==\`Name\`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep nginx|awk '{print $1}')
             until kubectl get ns &> /dev/null; do sleep 10; done
             kubectl patch svc ingress-traefik -p '{"spec":{"externalIPs": null}}' -n ingress
             echo "
