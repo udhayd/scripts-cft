@@ -214,23 +214,11 @@ Resources:
             echo "00 23 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
             systemctl restart crond
             
-            #### Argocd/Traefik Deployments
+            #### Argocd Deployments
             curl -s https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3|bash
             helm repo add argo https://argoproj.github.io/argo-helm
             helm repo add traefik https://helm.traefik.io/traefik
             cd /root
-            git clone https://github.com/udhayd/traefik.git
-            cd traefik/chart
-            helm dep build
-            helm install ingress . -n ingress --create-namespace
-            lbip=$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PublicIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep nginx|awk '{print $1}')
-            until kubectl get ns &> /dev/null; do sleep 10; done
-            kubectl patch svc ingress-traefik -p '{"spec":{"externalIPs": null}}' -n ingress
-            echo "
-              spec:
-                externalIPs:
-                   - $lbip" >/tmp/spec.yaml
-            kubectl patch svc ingress-traefik --type merge --patch  "$(cat /tmp/spec.yaml)" -n ingress
             cat >/root/longhorn.sh <<EOD
             kubectl create ns longhorn
             kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/v1.2.0/deploy/prerequisite/longhorn-iscsi-installation.yaml
@@ -247,6 +235,10 @@ Resources:
             cd argocd/chart
             helm dep update
             helm install argocd . -n argocd --create-namespace
+            cd /root 
+            git clone https://github.com/udhayd/argocd-apps
+            cd argocd-apps
+            helm install services . -n argocd
             git clone https://github.com/GoogleCloudPlatform/microservices-demo.git
             cd microservices-demo
             kubectl create ns gapp
