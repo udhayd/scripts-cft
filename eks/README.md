@@ -18,6 +18,8 @@ $ ./provision.sh -n "name of stack" &
 ## To Access the eks cluster
 Please execute update kubeconfig to access eks cluster.
 
+$ aws eks list-clusters --output text
+
 $ aws eks --region region-code update-kubeconfig --name $CLUSTER_NAME
 
 $ kubectl get nodes
