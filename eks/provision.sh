@@ -45,6 +45,7 @@ echo -e '\n \t' ""
 #### Variable Initialization
 set -e
 echo "CLUSTER_STACK_NAME=$2-cluster" >vars.sh
+echo "CLUSTER_NAME=$2-cluster" >>vars.sh
 source vars.sh
 source cluster.conf
 
@@ -92,4 +93,4 @@ fi
 rm auth.yaml
 
 #### Install EBS CSI Driver
-#bash ebs-csi.sh
+bash ebs-csi.sh

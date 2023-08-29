@@ -14,7 +14,6 @@ exit 1
 fi
 
 source vars.sh
-source cluster.conf
 ACCID=$(aws sts get-caller-identity --query "Account" --output text)
 OIDC_PROVIDER=$(aws iam list-open-id-connect-providers --query OpenIDConnectProviderList --output text)
 

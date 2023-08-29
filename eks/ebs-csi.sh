@@ -12,7 +12,6 @@ eksctl utils associate-iam-oidc-provider --cluster $CLUSTER_NAME --approve
 
 curl -o ebs-iam-policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-ebs-csi-driver/v0.9.0/docs/example-iam-policy.json
 
-aws iam create-policy --policy-name ${CLUSTER_NAME}_EKS_EBS_Policy --policy-document file://ebs-iam-policy.json
 
 OIDCID=$(aws eks describe-cluster --name $CLUSTER_NAME --query "cluster.identity.oidc.issuer" --output text|sed 's|https://||g'|awk -F'/' '{print $3}')
 ACCID=$(aws sts get-caller-identity --query "Account" --output text)
@@ -41,7 +40,7 @@ EOF
 
 aws iam create-role --role-name ${CLUSTER_NAME}_EKS_EBS_role --assume-role-policy-document file://"trust-policy.json"  --no-cli-pager
 
-aws iam attach-role-policy --policy-arn arn:aws:iam::$ACCID:policy/${CLUSTER_NAME}_EKS_EBS_Policy --role-name ${CLUSTER_NAME}_EKS_EBS_role
+aws iam put-role-policy --role-name ${CLUSTER_NAME}_EKS_EBS_role --policy-name ebs-csi-driver --policy-document file://ebs-iam-policy.json
 
 helm repo add aws-ebs-csi-driver https://kubernetes-sigs.github.io/aws-ebs-csi-driver
 
@@ -56,5 +55,18 @@ kubectl annotate serviceaccount ebs-csi-controller-sa -n ebs-csi eks.amazonaws.c
 until kubectl get pods -n ebs-csi -l=app=ebs-csi-controller|grep -i running >/dev/null; do  sleep 30; done
 
 kubectl delete pods -n ebs-csi -l=app=ebs-csi-controller
+
+cat <<EOF | kubectl apply -f - 
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3
+provisioner: ebs.csi.aws.com
+volumeBindingMode: Immediate
+parameters:
+  csi.storage.k8s.io/fstype: xfs
+  type: gp3
+  encrypted: "true"
+EOF
 
 rm ebs-iam-policy.json trust-policy.json -f
