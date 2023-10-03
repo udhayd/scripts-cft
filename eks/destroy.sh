@@ -33,6 +33,7 @@ then
 aws iam detach-role-policy --policy-arn arn:aws:iam::$ACCID:policy/${CLUSTER_NAME}_EKS_EBS_Policy --role-name ${CLUSTER_NAME}_EKS_EBS_role
 aws iam delete-policy --policy-arn arn:aws:iam::$ACCID:policy/${CLUSTER_NAME}_EKS_EBS_Policy
 aws iam delete-open-id-connect-provider --open-id-connect-provider-arn $OIDC_PROVIDER
+aws iam delete-role-policy --role-name ${CLUSTER_NAME}_EKS_EBS_role --policy-name ebs-csi-driver
 aws iam delete-role --role-name ${CLUSTER_NAME}_EKS_EBS_role
 fi
 
