@@ -1,1 +1,14 @@
+# ignore all vars.sh
 vars.sh
+
+# ignore all logs
+*.log
+
+# ignore all lock
+*.lock
+
+# ignore all tmp
+*.tmp
+
+# ignore ds_store for MAC system
+.DS_Store
