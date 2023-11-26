@@ -65,6 +65,7 @@ Resources:
   EKSServiceRole:
     Type: AWS::IAM::Role
     Properties:
+      RoleName: !Sub ${EKSClusterName}-eksservicerole
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -86,6 +87,9 @@ Resources:
           IpProtocol: "-1"
           FromPort: 0
           ToPort: 65535
+      Tags:
+        - Key: karpenter.sh/discovery
+          Value: !Ref EKSClusterName
 
   EKSCluster:
     Type: AWS::EKS::Cluster
@@ -110,6 +114,7 @@ Resources:
   NodeInstanceRole:
     Type: AWS::IAM::Role
     Properties:
+      RoleName: !Sub ${EKSClusterName}-noderole
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -132,6 +137,9 @@ Resources:
       Tags:
         - Key: !Sub kubernetes.io/cluster/${EKSClusterName}
           Value: owned
+        - Key: karpenter.sh/discovery
+          Value: !Ref EKSClusterName
+
   NodeSecurityGroupIngress:
     Type: AWS::EC2::SecurityGroupIngress
     DependsOn: NodeSecurityGroup
@@ -202,6 +210,9 @@ Resources:
     DependsOn: [EKSCluster]
     Properties:
       ClusterName: !Sub ${EKSClusterName}
+      NodegroupName: !Sub ${EKSClusterName}-nodegroup
+      InstanceTypes: 
+        - !Sub ${NodeInstanceType}
       NodeRole: !GetAtt NodeInstanceRole.Arn
       Version: !Ref KubernetesVersion
       ScalingConfig:
@@ -212,7 +223,9 @@ Resources:
         - !ImportValue PublicSubnet1ID
         - !ImportValue PublicSubnet2ID
       Tags:
+        karpenter.sh/discovery: !Ref EKSClusterName
         Name: "WorkerNodes"
+
 
   ##########################################
   ###      Unmanaged Worker Nodes        ###
@@ -240,6 +253,10 @@ Resources:
         - Key: !Sub kubernetes.io/cluster/${EKSClusterName}
           Value: owned
           PropagateAtLaunch: true
+        - Key: karpenter.sh/discovery
+          Value: !Ref EKSClusterName
+          PropagateAtLaunch: true
+
     UpdatePolicy:
       AutoScalingRollingUpdate:
         MaxBatchSize: 1
@@ -271,6 +288,8 @@ Resources:
            - Key: Name
              Value:
                Fn::Sub: "${AWS::StackName}-workernodes"
+           - Key: karpenter.sh/discovery
+             Value: !Ref EKSClusterName
          UserData:
            Fn::Base64:
              !Sub |

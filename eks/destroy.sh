@@ -28,13 +28,13 @@ else
 fi
 
 #### Delete EBS CSI role & policy
-if aws iam get-role --role-name ${CLUSTER_NAME}_EKS_EBS_role --output text >/dev/null 2>&1
+if aws iam get-role --role-name ${CLUSTER_NAME}-ebsrole  --output text >/dev/null 2>&1
 then
-aws iam detach-role-policy --policy-arn arn:aws:iam::$ACCID:policy/${CLUSTER_NAME}_EKS_EBS_Policy --role-name ${CLUSTER_NAME}_EKS_EBS_role
-aws iam delete-policy --policy-arn arn:aws:iam::$ACCID:policy/${CLUSTER_NAME}_EKS_EBS_Policy
+aws iam detach-role-policy --policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy --role-name ${CLUSTER_NAME}-ebsrole
+#aws iam delete-policy --policy-arn arn:aws:iam::$ACCID:policy/${CLUSTER_NAME}_EKS_EBS_Policy
 aws iam delete-open-id-connect-provider --open-id-connect-provider-arn $OIDC_PROVIDER
-aws iam delete-role-policy --role-name ${CLUSTER_NAME}_EKS_EBS_role --policy-name ebs-csi-driver
-aws iam delete-role --role-name ${CLUSTER_NAME}_EKS_EBS_role
+#aws iam delete-role-policy --role-name ${CLUSTER_NAME}_EKS_EBS_role --policy-name ebs-csi-driver
+aws iam delete-role --role-name ${CLUSTER_NAME}-ebsrole
 fi
 
 rm vars.sh

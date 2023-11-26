@@ -10,7 +10,7 @@ set -ex
 #### Install EBS CSI Driver
 eksctl utils associate-iam-oidc-provider --cluster $CLUSTER_NAME --approve
 
-curl -o ebs-iam-policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-ebs-csi-driver/v0.9.0/docs/example-iam-policy.json
+#curl -o ebs-iam-policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-ebs-csi-driver/v0.9.0/docs/example-iam-policy.json
 
 
 OIDCID=$(aws eks describe-cluster --name $CLUSTER_NAME --query "cluster.identity.oidc.issuer" --output text|sed 's|https://||g'|awk -F'/' '{print $3}')
@@ -38,9 +38,11 @@ cat > trust-policy.json <<EOF
 }
 EOF
 
-aws iam create-role --role-name ${CLUSTER_NAME}_EKS_EBS_role --assume-role-policy-document file://"trust-policy.json"  --no-cli-pager
+aws iam create-role --role-name ${CLUSTER_NAME}-ebsrole --assume-role-policy-document file://"trust-policy.json"  --no-cli-pager
 
-aws iam put-role-policy --role-name ${CLUSTER_NAME}_EKS_EBS_role --policy-name ebs-csi-driver --policy-document file://ebs-iam-policy.json
+aws iam attach-role-policy --policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy --role-name ${CLUSTER_NAME}-ebsrole
+
+#aws iam put-role-policy --role-name ${CLUSTER_NAME}_EKS_EBS_role --policy-name ebs-csi-driver --policy-document file://ebs-iam-policy.json
 
 helm repo add aws-ebs-csi-driver https://kubernetes-sigs.github.io/aws-ebs-csi-driver
 
@@ -50,7 +52,7 @@ helm upgrade --install aws-ebs-csi-driver -n ebs-csi aws-ebs-csi-driver/aws-ebs-
 
 sleep 10
 
-kubectl annotate serviceaccount ebs-csi-controller-sa -n ebs-csi eks.amazonaws.com/role-arn=arn:aws:iam::$ACCID:role/${CLUSTER_NAME}_EKS_EBS_role
+kubectl annotate serviceaccount ebs-csi-controller-sa -n ebs-csi eks.amazonaws.com/role-arn=arn:aws:iam::$ACCID:role/${CLUSTER_NAME}-ebsrole
 
 until kubectl get pods -n ebs-csi -l=app=ebs-csi-controller|grep -i running >/dev/null; do  sleep 30; done
 

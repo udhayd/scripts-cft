@@ -50,14 +50,14 @@ source vars.sh
 source cluster.conf
 
 #### Create Cluster
-aws cloudformation deploy --no-fail-on-empty-changeset --template-file ekscluster.yaml --stack-name $CLUSTER_STACK_NAME --capabilities CAPABILITY_IAM --parameter-overrides EKSClusterName=$CLUSTER_NAME KubernetesVersion=$KUBERNETES_VERSION \
+aws cloudformation deploy --no-fail-on-empty-changeset --template-file ekscluster.yaml --stack-name $CLUSTER_STACK_NAME --capabilities CAPABILITY_NAMED_IAM --parameter-overrides EKSClusterName=$CLUSTER_NAME KubernetesVersion=$KUBERNETES_VERSION \
     NodeInstanceType=$WORKER_INSTANCE_TYPE NodeAutoScalingGroupMinSize=$MIN_NUM_NODES \
     NodeAutoScalingGroupMaxSize=$MAX_NUM_NODES  NodeVolumeSize=$WORKER_NODE_VOL_SIZE \
     NodeAutoScalingGroupDesiredCapacity=$NUM_NODES ManagedNode=$EKS_MANAGED_NODE_GROUP \
     NodeGroupName=$NODE_GROUP_NAME    
 
 export AWS_PAGER=""
-if ! aws eks describe-cluster --name dev-cluster --output text|grep CLUSTERLOGGING|grep -i true  >/dev/null 2>&1
+if ! aws eks describe-cluster --name $CLUSTER_NAME --output text|grep CLUSTERLOGGING|grep -i true  >/dev/null 2>&1
 then
 aws eks update-cluster-config --name $CLUSTER_NAME --logging '{"clusterLogging":[{"types":["api","audit","authenticator","controllerManager","scheduler"],"enabled":true}]}' 
 fi
