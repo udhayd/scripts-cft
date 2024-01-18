@@ -1,0 +1,29 @@
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: gangwaysvc
+  labels:
+    app: gangway
+spec:
+  type: ClusterIP
+  ports:
+    - name: "http"
+      protocol: TCP
+      port: 80
+      targetPort: "http"
+  selector:
+    app: gangway
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: gangway
+spec:
+  rules:
+  - host: gangway.groofy.live #dns name previously configured for gangway
+    http:
+      paths:
+      - backend:
+          serviceName: gangwaysvc
+          servicePort: http
