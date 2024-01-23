@@ -70,18 +70,22 @@ Resources:
             AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
             export AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
             ssh-keygen -t rsa -f /root/.ssh/id_rsa -q -P ""
-            aws ssm put-parameter --name master-${STK} --value "$(cat id_rsa.pub)" --type String --overwrite
+            cp /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys
+            aws ssm put-parameter --name master-${STK} --value "$(cat /root/.ssh/id_rsa.pub)" --type String --overwrite
             yum install ksh git telnet  -y
+            until aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running|grep worker; do  sleep 10; done
             aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running>/tmp/$$
-            sed -i 's/master.*/&  master/' /tmp/$$
+            sed -i 's/master.*/&  master1/' /tmp/$$
             sed -i 's/worker1.*/&  worker1/' /tmp/$$
             sed -i 's/worker2.*/&  worker2/' /tmp/$$
+            sed -i 's/nginx.*/&  loadbalancer/' /tmp/$$
             cat /tmp/$$|awk '{print $1, " " , $2," " , $5}' >>/etc/hosts
+            echo "00 16 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
+            systemctl restart crond
             
 
   Workernode1:
     Type: AWS::EC2::Instance
-    DependsOn: Masternode
     Properties:
       IamInstanceProfile:
         Ref: InstanceProfile
@@ -102,7 +106,7 @@ Resources:
             #!/bin/bash
             set -x
             exec >/root/bootstrap.log 2>&1 
-            hostname worker1-${STK}
+            hostname worker1
             cat >>/root/.bash_profile <<EOF
             alias c=clear
             alias kc=kubectl
@@ -110,21 +114,27 @@ Resources:
             PS1=\$(hostname):'\$PWD# '
             export PS1
             EOF
-            echo worker1-${STK}  >/etc/hostname
+            echo worker1  >/etc/hostname
             AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
             export AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
-            aws ssm get-parameters --name master-${STK} --query 'Parameters[*].Value' --output text >/root/.ssh/authorized_keys
             yum install ksh telnet -y
-            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running>/tmp/$$
-            sed -i 's/master.*/&  master/' /tmp/$$
+            until aws ssm get-parameters --name master-${STK} --query 'Parameters[*].Value' --output text|grep ssh; do  sleep 10; done
+            aws ssm get-parameters --name master-${STK} --query 'Parameters[*].Value' --output text >/root/.ssh/authorized_keys
+            for i in master worker1 worker2
+            do
+            until aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running|grep $i; do sleep 10;done
+            done
+            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running >/tmp/$$
+            sed -i 's/master.*/&  master1/' /tmp/$$
             sed -i 's/worker1.*/&  worker1/' /tmp/$$
             sed -i 's/worker2.*/&  worker2/' /tmp/$$
+            sed -i 's/nginx.*/&  loadbalancer/' /tmp/$$
             cat /tmp/$$|awk '{print $1, " " , $2," " , $5}' >>/etc/hosts
-
+            echo "00 16 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
+            systemctl restart crond
 
   Workernode2:
     Type: AWS::EC2::Instance
-    DependsOn: Masternode
     Properties:
       IamInstanceProfile:
         Ref: InstanceProfile
@@ -144,8 +154,8 @@ Resources:
             #!/bin/bash
             set -x
             exec >/root/bootstrap.log 2>&1
-            hostname worker2-${STK}
-            echo worker2-${STK}  >/etc/hostname
+            hostname worker2
+            echo worker2  >/etc/hostname
             cat >>/root/.bash_profile <<EOF
             alias c=clear
             alias kc=kubectl
@@ -155,13 +165,17 @@ Resources:
             EOF
             AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
             export AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
+            until aws ssm get-parameters --name master-${STK} --query 'Parameters[*].Value' --output text|grep ssh; do  sleep 10; done 
             aws ssm get-parameters --name master-${STK} --query 'Parameters[*].Value' --output text >/root/.ssh/authorized_keys
             yum install ksh telnet docker -y
             aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running>/tmp/$$
-            sed -i 's/master.*/&  master/' /tmp/$$
+            sed -i 's/master.*/&  master1/' /tmp/$$
             sed -i 's/worker1.*/&  worker1/' /tmp/$$
             sed -i 's/worker2.*/&  worker2/' /tmp/$$
+            sed -i 's/nginx.*/&  loadbalancer/' /tmp/$$
             cat /tmp/$$|awk '{print $1, " " , $2," " , $5}' >>/etc/hosts
+            echo "00 16 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
+            systemctl restart crond
 
 
   nginxnode:
@@ -209,7 +223,7 @@ Resources:
             done
             aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep ${STK}|grep running>/tmp/$$
             cat /tmp/$$|awk '{print $1, " " , $2}' >>/etc/hosts
-            wrkr2=$(grep worker2 /etc/hosts|awk '{print $1}')
+            wrkr2=$(grep worker2 /etc/hosts|awk '{prin $1}')
             wrkr1=$(grep worker1 /etc/hosts|awk '{print $1}')
             mastr=$(grep master /etc/hosts|awk '{print $1}')
             amazon-linux-extras install epel -y
@@ -273,6 +287,9 @@ Resources:
             service nginx start
             systemctl enable nginx
             pubip=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+            echo "00 16 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
+            systemctl restart crond
+
 
   ParameterStore:
     Type: AWS::SSM::Parameter
