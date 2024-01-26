@@ -1,25 +1,29 @@
 #! /bin/bash
 ##################################################################################################
-##### Description: Script to configure master Nodes to setup kubernetes cluster              #####
-##### Usage: ./configure-master.sh                                                           #####
+##### Description: Script to configure kubernetes cluster                                    #####
+##### Usage: ./cluster-configure.sh                                                          #####
 ##### Version: 1.0                                                                           #####
 ##################################################################################################
 
+set -ev
 ### Variable Initialization
 KUBE_VERSION=$1
-export AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
-export AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
-INTERNAL_IP=$(ip addr show eth0 | grep "inet " | awk '{print $2}' | cut -d / -f 1)
-MASTER_1=$(grep master1 /etc/hosts|awk '{print $1}')
-WORKER_1=$(grep worker1 /etc/hosts|awk '{print $1}')
-WORKER_2=$(grep worker2 /etc/hosts|awk '{print $1}')
+#export AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
+#export AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
 HOSTNAME=$(hostname)
 ETCD_NAME=$(hostname -s)
-LOADBALANCER=$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PublicIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep nginx|awk '{print $1}')
+MASTER_1=$(grep master /etc/hosts|tail -1|awk '{print $1}')
+WORKER_1=$(grep worker-1 /etc/hosts|tail -1|awk '{print $1}')
+WORKER_2=$(grep worker-2 /etc/hosts|tail -1|awk '{print $1}')
+INTERNAL_IP=$(grep $HOSTNAME /etc/hosts|tail -1|awk '{print $1}')
+LOADBALANCER=$(grep $HOSTNAME /etc/hosts|tail -1|awk '{print $1}')
+#LOADBALANCER=$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PublicIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep nginx|awk '{print $1}')
+ETCD_VERSION="v3.5.9"
 SERVICE_CIDR=10.96.0.0/24
 POD_CIDR=10.244.0.0/16
 CLUSTER_DNS=$(echo $SERVICE_CIDR | awk 'BEGIN {FS="."} ; { printf("%s.%s.%s.10", $1, $2, $3) }')
 API_SERVICE=$(echo $SERVICE_CIDR | awk 'BEGIN {FS="."} ; { printf("%s.%s.%s.1", $1, $2, $3) }')
+
 
 ### Script Execution Validation
 if [ $# -ne 1 ]
@@ -28,12 +32,13 @@ then
     exit 1
 fi
 
+
 ### Step1 Client tool Installation
 echo -e "\n" "Step1 ====> Installing kubectl client tool in master nodes"
 {
-  curl -sLO "https://dl.k8s.io/release/$KUBE_VERSION/bin/linux/amd64/kubectl"
-  chmod +x kubectl
-  mv kubectl /usr/local/bin/
+  curl -ksLO "https://dl.k8s.io/release/$KUBE_VERSION/bin/linux/amd64/{kubeadm,kubectl}"
+  chmod +x kubectl kubeadm
+  mv kubectl kubeadm /usr/local/bin/
   mkdir /root/certs
   cd /root/certs
 }
@@ -61,6 +66,7 @@ echo -e "\n" "Step2.2 ====> Generate Admin Certificate"
   openssl req -new -key admin.key -subj "/CN=admin/O=system:masters" -out admin.csr
 
   # Sign certificate for admin user using CA servers private
+  openssl x509 -req -in admin.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out admin.crt -days 1000
 }
 
 echo -e "\n" "Step2.3 ====> Generate Controller Manager Certificate"
@@ -196,16 +202,16 @@ echo -e "\n" "Step2.9 ====> Generate ServiceAccount Key Pair"
   
 echo -e "\n" "Step2.10 ====> Distribute Certificates"
 {
-  for instance in master1; 
+  for instance in master; 
   do
     scp -o StrictHostKeyChecking=no ca.crt ca.key kube-apiserver.key kube-apiserver.crt \
        apiserver-kubelet-client.crt apiserver-kubelet-client.key service-account.key service-account.crt \
        etcd-server.key etcd-server.crt kube-controller-manager.key kube-controller-manager.crt \
        kube-scheduler.key kube-scheduler.crt ${instance}:~/
   done
-  for instance in worker1 worker2; 
+  for instance in worker-1 worker-2; 
   do
-    scp ca.crt kube-proxy.crt kube-proxy.key ${instance}:~/
+    scp -o StrictHostKeyChecking=no ca.crt ca.key kube-proxy.crt kube-proxy.key ${instance}:~/
   done
 }
 
@@ -294,13 +300,13 @@ echo -e "\n" "Step3.4 ====> Generate kubeconfig file for admin user"
 
 echo -e "\n" "Step3.5 ====> Distribute kubeconfig files"
 {
-  for instance in worker1 worker2; 
+  for instance in worker-1 worker-2; 
   do
-    scp kube-proxy.kubeconfig ${instance}:~/
+    scp -o StrictHostKeyChecking=no kube-proxy.kubeconfig ${instance}:~/
   done
-  for instance in master1; 
+  for instance in master; 
   do
-    scp admin.kubeconfig kube-controller-manager.kubeconfig kube-scheduler.kubeconfig ${instance}:~/
+    scp -o StrictHostKeyChecking=no admin.kubeconfig kube-controller-manager.kubeconfig kube-scheduler.kubeconfig ${instance}:~/
   done
 }
 
@@ -330,13 +336,13 @@ EOF
 
 echo -e "\n" "Step4.3 ====> Distribute Encryption config file"
 {
-  for instance in master1; 
+  for instance in master; 
   do
-    scp encryption-config.yaml ${instance}:~/
+    scp -o StrictHostKeyChecking=no encryption-config.yaml ${instance}:~/
   done
-  for instance in master1; do
-    ssh ${instance} mkdir -p /var/lib/kubernetes/
-    ssh ${instance} mv encryption-config.yaml /var/lib/kubernetes/
+  for instance in master; do
+    ssh -o StrictHostKeyChecking=no ${instance} mkdir -p /var/lib/kubernetes/
+    ssh -o StrictHostKeyChecking=no ${instance} mv encryption-config.yaml /var/lib/kubernetes/
   done
 }
 
@@ -344,8 +350,7 @@ echo -e "\n" "Step4.3 ====> Distribute Encryption config file"
 ### Step5 Bootstrapping ETCD Server
 echo -e "\n" "Step5.1 ====> Download and Install the etcd Binaries"
 {
-  ETCD_VERSION="v3.5.9"
-  wget -q "https://github.com/coreos/etcd/releases/download/${ETCD_VERSION}/etcd-${ETCD_VERSION}-linux-amd64.tar.gz"
+  wget --no-check-certificate "https://github.com/coreos/etcd/releases/download/${ETCD_VERSION}/etcd-${ETCD_VERSION}-linux-amd64.tar.gz"
   tar -xvf etcd-${ETCD_VERSION}-linux-amd64.tar.gz
   mv etcd-${ETCD_VERSION}-linux-amd64/etcd* /usr/local/bin/
 }
@@ -383,7 +388,7 @@ ExecStart=/usr/local/bin/etcd \\
   --listen-client-urls https://${INTERNAL_IP}:2379,https://127.0.0.1:2379 \\
   --advertise-client-urls https://${INTERNAL_IP}:2379 \\
   --initial-cluster-token etcd-cluster-0 \\
-  --initial-cluster master1=https://${MASTER_1}:2380\\
+  --initial-cluster master=https://${MASTER_1}:2380\\
   --initial-cluster-state new \\
   --data-dir=/var/lib/etcd
 Restart=on-failure
@@ -396,9 +401,8 @@ EOF
 
 echo -e "\n" "Step5.3 ====> Start ETCD Server"
 {
-  systemctl daemon-reload
-  systemctl enable etcd
-  systemctl start etcd
+  systemctl daemon-reload && { systemctl enable etcd;systemctl start etcd; }
+  systemctl status etcd|grep 'Active: active' && echo -e "\n" "ETCD Service is Active"
 }
 
 
@@ -447,7 +451,7 @@ ExecStart=/usr/local/bin/kube-apiserver \\
   --etcd-cafile=/var/lib/kubernetes/pki/ca.crt \\
   --etcd-certfile=/var/lib/kubernetes/pki/etcd-server.crt \\
   --etcd-keyfile=/var/lib/kubernetes/pki/etcd-server.key \\
-  --etcd-servers=https://${MASTER_1}:2379,https://${MASTER_2}:2379 \\
+  --etcd-servers=https://${MASTER_1}:2379 \\
   --event-ttl=1h \\
   --encryption-provider-config=/var/lib/kubernetes/encryption-config.yaml \\
   --kubelet-certificate-authority=/var/lib/kubernetes/pki/ca.crt \\
@@ -536,6 +540,7 @@ echo -e "\n" "Step6.4 ====> Start Controller Services"
   sudo systemctl daemon-reload
   sudo systemctl enable kube-apiserver kube-controller-manager kube-scheduler
   sudo systemctl start kube-apiserver kube-controller-manager kube-scheduler
+  until netstat -ntlp|grep LISTEN|grep 6443; do echo -e "\n" "Waiting for APIServer to be up";sleep 10;done
   kubectl get componentstatuses --kubeconfig admin.kubeconfig
 }
 
@@ -558,16 +563,16 @@ basicConstraints = CA:FALSE
 keyUsage = nonRepudiation, digitalSignature, keyEncipherment
 subjectAltName = @alt_names
 [alt_names]
-DNS.1 = worker1
-DNS.2 = worker2
+DNS.1 = worker-1
+DNS.2 = worker-2
 IP.1 = ${WORKER_1}
 IP.2 = ${WORKER_2}
 EOF
 
-  for wrk in worker1 worker2;
+  for wrk in worker-1 worker-2;
   do
     openssl genrsa -out $wrk.key 2048
-    openssl req -new -key $wrk.key -subj "/CN=system:node:$wrk/O=system:nodes" -out $wrk.csr -config openssl-$wrk.cnf
+    openssl req -new -key $wrk.key -subj "/CN=system:node:$wrk/O=system:nodes" -out $wrk.csr -config openssl-worker.cnf
     openssl x509 -req -in $wrk.csr -CA ca.crt -CAkey ca.key -CAcreateserial  -out $wrk.crt -extensions v3_req -extfile openssl-worker.cnf -days 1000
   
     kubectl config set-cluster kubernetes-the-hard-way \
@@ -575,18 +580,18 @@ EOF
         --server=https://${LOADBALANCER}:6443 \
         --kubeconfig=$wrk.kubeconfig
     
-    kubectl config set-credentials system:node:worker-1 \
-        --client-certificate=/var/lib/kubernetes/pki/worker-1.crt \
-        --client-key=/var/lib/kubernetes/pki/worker-1.key \
+    kubectl config set-credentials system:node:$wrk \
+        --client-certificate=/var/lib/kubernetes/pki/$wrk.crt \
+        --client-key=/var/lib/kubernetes/pki/$wrk.key \
         --kubeconfig=$wrk.kubeconfig
     
     kubectl config set-context default \
         --cluster=kubernetes-the-hard-way \
-        --user=system:node:worker-1 \
+        --user=system:node:$wrk \
         --kubeconfig=$wrk.kubeconfig
     
     kubectl config use-context default --kubeconfig=$wrk.kubeconfig
-    scp ca.crt $wrk.crt $wrk.kubeconfig  $wrk:~/
+    scp -o StrictHostKeyChecking=no ca.crt $wrk.crt $wrk.key $wrk.kubeconfig  $wrk:~/
   done
 }
 
@@ -595,7 +600,8 @@ EOF
 echo -e "\n" "Step8.1 ====> Deploy Flannel Network"
 {
   mkdir /root/.kube && cp admin.kubeconfig /root/.kube/config
-  kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+  wget --no-check-certificate https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+  kubectl apply -f kube-flannel.yml
 }
 
 echo -e "\n" "Step8.2 ====> Verification of Flannel pods"
@@ -607,6 +613,7 @@ echo -e "\n" "Step8.2 ====> Verification of Flannel pods"
 ### Step9 Deploy DNS Add-on
 echo -e "\n" "Step9.1 ====> Deploy CoreDNS"
 {
-  kubectl apply -f https://raw.githubusercontent.com/mmumshad/kubernetes-the-hard-way/master/deployments/coredns.yaml
+  wget --no-check-certificate https://raw.githubusercontent.com/mmumshad/kubernetes-the-hard-way/master/deployments/coredns.yaml
+  kubectl apply -f coredns.yaml
   kubectl get pods -l k8s-app=kube-dns -n kube-system
 }
