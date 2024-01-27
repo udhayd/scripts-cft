@@ -24,7 +24,7 @@ then
         echo ""
         echo "Network stack doesnt exist, Executing VPC Stack First ..."
         cd ../vpc
-        ./provision.sh -n $2-vpc
+        ./provision.sh -n $2
         echo ""
         cd ../k8s-hardway
 	echo ""
