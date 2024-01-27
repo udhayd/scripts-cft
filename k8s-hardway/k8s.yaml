@@ -1,0 +1,374 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: K8s Cluster Instances Creation
+
+Parameters:
+  ImageId:
+    Description: AMI Id
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+  STK:
+    Description: "Name of stack"
+    Type: String
+
+
+Mappings: 
+  MInstanceMap: 
+    Instancetype: 
+      dev: "t2.medium"
+      test: "t2.medium"
+      uat: "t2.medium"
+      prod: "t2.medium"
+  WInstanceMap: 
+    Instancetype: 
+      dev: "t2.micro"
+      test: "t2.micro"
+      uat: "t2.micro"
+      prod: "t2.micro"
+
+Resources:
+  Masternode:
+    Type: AWS::EC2::Instance
+    DependsOn: ParameterStore
+    Properties:
+      IamInstanceProfile:
+        Ref: InstanceProfile
+      ImageId:
+        Ref: ImageId
+      InstanceType: !Sub ${MTYPE}
+      SecurityGroupIds:
+        - Ref: K8SSecurityGroup
+      SubnetId:
+        Fn::ImportValue: PublicSubnet1ID
+      Tags:
+        - Key: Name
+          Value: !Sub master-${STK}
+      UserData:
+        Fn::Base64:
+          Fn::Sub: |
+            #!/bin/bash
+            set -x
+            exec >/root/bootstrap.log 2>&1
+            cd /root
+            hostname master
+            echo master  >/etc/hostname
+            cat >>/root/.bash_profile <<EOF
+            alias c=clear
+            alias kc=kubectl
+            set -o vi
+            PS1=\$(hostname):'\$PWD# '
+            export PS1
+            ssh-exec () 
+            {
+            for i in master worker1 worker2;do  echo;echo "******\$i******";ssh -o StrictHostKeyChecking=no \$i \$@;echo "******************";done
+            }
+            EOF
+            AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
+            export AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
+            ssh-keygen -t rsa -f /root/.ssh/id_rsa -q -P ""
+            cp /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys
+            aws ssm put-parameter --name master-${STK} --value "$(cat /root/.ssh/id_rsa.pub)" --type String --overwrite
+            yum install ksh git telnet  -y
+            until aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running|grep worker; do  sleep 10; done
+            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running>/tmp/$$
+            sed -i 's/master.*/&  master/' /tmp/$$
+            sed -i 's/worker1.*/&  worker1/' /tmp/$$
+            sed -i 's/worker2.*/&  worker2/' /tmp/$$
+            sed -i 's/nginx.*/&  loadbalancer/' /tmp/$$
+            cat /tmp/$$|awk '{print $1, " " , $2," " , $5}' >>/etc/hosts
+            echo "00 16 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
+            systemctl restart crond
+            git clone https://github.com/udhayd/scripts-cft.git && { cd scripts-cft;git checkout new;mv k8s-hardway/cluster-* /root;cd /root;chmod 755 /root/cluster-*;rm -rf scripts-cft; }
+            sed -i -e 's/\r$//' /root/cluster-*.sh
+            echo "********END TASK******************"
+            
+
+  Workernode1:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile:
+        Ref: InstanceProfile
+      ImageId:
+        Ref: ImageId
+      #InstanceType: !FindInMap [WInstanceMap, Instancetype, dev]
+      InstanceType: !Sub ${WTYPE}
+      SecurityGroupIds:
+        - Ref: K8SSecurityGroup
+      SubnetId:
+        Fn::ImportValue: PublicSubnet1ID
+      Tags:
+        - Key: Name
+          Value: !Sub worker1-${STK}
+      UserData:
+        Fn::Base64:
+          Fn::Sub: |
+            #!/bin/bash
+            set -x
+            exec >/root/bootstrap.log 2>&1 
+            hostname worker1
+            cat >>/root/.bash_profile <<EOF
+            alias c=clear
+            alias kc=kubectl
+            set -o vi
+            PS1=\$(hostname):'\$PWD# '
+            export PS1
+            EOF
+            echo worker1  >/etc/hostname
+            AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
+            export AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
+            yum install ksh telnet -y
+            until aws ssm get-parameters --name master-${STK} --query 'Parameters[*].Value' --output text|grep ssh; do  sleep 10; done
+            aws ssm get-parameters --name master-${STK} --query 'Parameters[*].Value' --output text >/root/.ssh/authorized_keys
+            for i in master worker1 worker2
+            do
+            until aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running|grep $i; do sleep 10;done
+            done
+            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running >/tmp/$$
+            sed -i 's/master.*/&  master/' /tmp/$$
+            sed -i 's/worker1.*/&  worker1/' /tmp/$$
+            sed -i 's/worker2.*/&  worker2/' /tmp/$$
+            sed -i 's/nginx.*/&  loadbalancer/' /tmp/$$
+            cat /tmp/$$|awk '{print $1, " " , $2," " , $5}' >>/etc/hosts
+            echo "00 16 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
+            systemctl restart crond
+            echo "********END TASK******************"
+
+
+  Workernode2:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile:
+        Ref: InstanceProfile
+      ImageId:
+        Ref: ImageId
+      InstanceType: !Sub ${WTYPE}
+      SecurityGroupIds:
+        - Ref: K8SSecurityGroup
+      SubnetId:
+        Fn::ImportValue: PublicSubnet1ID
+      Tags:
+        - Key: Name
+          Value: !Sub worker2-${STK}
+      UserData:
+        Fn::Base64:
+          Fn::Sub: |
+            #!/bin/bash
+            set -x
+            exec >/root/bootstrap.log 2>&1
+            hostname worker2
+            echo worker2  >/etc/hostname
+            cat >>/root/.bash_profile <<EOF
+            alias c=clear
+            alias kc=kubectl
+            set -o vi
+            PS1=\$(hostname):'\$PWD# '
+            export PS1
+            EOF
+            AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
+            export AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
+            until aws ssm get-parameters --name master-${STK} --query 'Parameters[*].Value' --output text|grep ssh; do  sleep 10; done 
+            aws ssm get-parameters --name master-${STK} --query 'Parameters[*].Value' --output text >/root/.ssh/authorized_keys
+            yum install ksh telnet -y
+            for i in master worker1 worker2
+            do
+              until aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running|grep $i; do sleep 10;done
+            done
+            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running>/tmp/$$
+            sed -i 's/master.*/&  master/' /tmp/$$
+            sed -i 's/worker1.*/&  worker1/' /tmp/$$
+            sed -i 's/worker2.*/&  worker2/' /tmp/$$
+            sed -i 's/nginx.*/&  loadbalancer/' /tmp/$$
+            cat /tmp/$$|awk '{print $1, " " , $2," " , $5}' >>/etc/hosts
+            echo "00 16 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
+            systemctl restart crond
+            echo "********END TASK******************"
+
+
+  nginxnode:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile:
+        Ref: InstanceProfile
+      ImageId:
+        Ref: ImageId
+      InstanceType: !FindInMap [WInstanceMap, Instancetype, dev]
+      SecurityGroupIds:
+        - Ref: LBSecurityGroup
+      SubnetId:
+        Fn::ImportValue: PublicSubnet1ID
+      Tags:
+        - Key: Name
+          Value: !Sub nginx-${STK}
+      UserData:
+        Fn::Base64:
+          Fn::Sub: |
+            #!/bin/bash
+            set -x
+            exec >/root/bootstrap.log 2>&1 
+            hostname nginx-${STK}
+            echo nginx-${STK}  >/etc/hostname
+            cat >>/root/.bash_profile <<EOF
+            alias c=clear
+            set -o vi
+            PS1=\$(hostname):'\$PWD# '
+            export PS1
+            EOF
+            yum install ksh telnet -y
+            
+            #### Install and configure ngnix
+            D=$(date +%Y-%m-%d)
+            AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
+            AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
+            export AWS_DEFAULT_REGION
+            i=$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text| grep ${STK} | wc -l)
+            until [ $i == 4 ]
+            do
+              echo "Waiting for worker nodes to be created";
+              sleep 3;
+              i=$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text| grep ${STK} | wc -l)
+            done
+            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep ${STK}|grep running>/tmp/$$
+            cat /tmp/$$|awk '{print $1, " " , $2}' >>/etc/hosts
+            wrkr2=$(grep worker2 /etc/hosts|awk '{print $1}')
+            wrkr1=$(grep worker1 /etc/hosts|awk '{print $1}')
+            mastr=$(grep master /etc/hosts|awk '{print $1}')
+            amazon-linux-extras install epel -y
+            yum install nginx -y
+            yum install nginx-mod-stream -y
+         
+            #### Nginx Loadbalancer Configuration
+            cd /etc/nginx/
+            mv nginx.conf nginx.conf_org
+            cat >nginx.conf <<EOF
+            user nginx;
+            worker_processes auto;
+            error_log /var/log/nginx/error.log;
+            pid /run/nginx.pid;
+            # Load dynamic modules. See /usr/share/doc/nginx/README.dynamic.
+            include /usr/share/nginx/modules/*.conf;
+            events {
+            worker_connections 1024;
+            }
+            stream {
+               upstream backend_80 {
+                   least_conn;
+                   server $wrkr1:32080;
+                   server $wrkr2:32080;
+              }
+ 
+               upstream backend_443 {
+                  least_conn;
+                  server $wrkr1:32443;
+                  server $wrkr2:32443;
+              }
+
+               upstream backend_6443 {
+                  least_conn;
+                  server $mastr:6443;
+              }
+
+               server {
+                  listen        80;
+                  proxy_pass    backend_80;
+                  proxy_timeout 3s;
+                  proxy_connect_timeout 1s;
+              }
+
+               server {
+                  listen        443;
+                  proxy_pass    backend_443;
+                  proxy_timeout 3s;
+                  proxy_connect_timeout 1s;
+              }
+
+               server {
+                  listen       6443;
+                  proxy_pass   backend_6443;
+                  proxy_timeout 3s;
+                  proxy_connect_timeout 1s;
+              }
+            }
+            EOF
+            service nginx status
+            service nginx start
+            systemctl enable nginx
+            pubip=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+            echo "00 16 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
+            systemctl restart crond
+            echo "********END TASK******************"
+
+
+  ParameterStore:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub master-${STK}
+      Type: String
+      Value: data
+      Description: SSM Parameter for pub key
+
+  LBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName:
+        Fn::Sub: "${AWS::StackName}-LB-SG"
+      GroupDescription:
+        Fn::Sub: "${AWS::StackName} LB SG"
+      VpcId:
+        Fn::ImportValue: MyVPCID
+      SecurityGroupIngress:
+      - IpProtocol: TCP
+        FromPort: 443
+        ToPort: 443
+        CidrIp: 0.0.0.0/0
+        Description: "To Access Application in K8s cluster"
+      - IpProtocol: TCP
+        FromPort: 6443
+        ToPort: 6443  
+        CidrIp: 0.0.0.0/0
+        Description: "To Access Kubeapi Server"
+
+  K8SSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName:
+        Fn::Sub: "${AWS::StackName}-K8S-SG"
+      GroupDescription:
+        Fn::Sub: "${AWS::StackName} K8S SG"
+      VpcId:
+        Fn::ImportValue: MyVPCID
+  K8SSGIngress:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref K8SSecurityGroup
+      IpProtocol: -1
+      SourceSecurityGroupId: !GetAtt K8SSecurityGroup.GroupId
+  LBSGIngress:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref K8SSecurityGroup
+      IpProtocol: -1
+      SourceSecurityGroupId: !GetAtt LBSecurityGroup.GroupId
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - Ref: InstanceRole
+
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess
+        - arn:aws:iam::aws:policy/AmazonRoute53FullAccess
