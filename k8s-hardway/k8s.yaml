@@ -9,15 +9,6 @@ Parameters:
   STK:
     Description: "Name of stack"
     Type: String
-  VER:
-    Description: "Kubernetes Version"
-    Type: String
-  MTYPE:
-    Description: "Master Node Instance Type"
-    Type: String
-  WTYPE:
-    Description: "Worker Node Instance Type"
-    Type: String
 
 
 Mappings: 
