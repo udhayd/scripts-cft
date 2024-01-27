@@ -14,16 +14,16 @@ Parameters:
 Mappings: 
   MInstanceMap: 
     Instancetype: 
-      dev: "t2.medium"
-      test: "t2.medium"
+      dev: "t2.small"
+      test: "t2.micro"
       uat: "t2.medium"
-      prod: "t2.medium"
+      prod: "t2.large"
   WInstanceMap: 
     Instancetype: 
-      dev: "t2.micro"
-      test: "t2.micro"
-      uat: "t2.micro"
-      prod: "t2.micro"
+      dev: "t2.medium"
+      test: "t2.small"
+      uat: "t2.large"
+      prod: "t2.2xlarge"
 
 Resources:
   Masternode:
@@ -34,7 +34,7 @@ Resources:
         Ref: InstanceProfile
       ImageId:
         Ref: ImageId
-      InstanceType: !Sub ${MTYPE}
+      InstanceType: !FindInMap [MInstanceMap, Instancetype, dev]
       SecurityGroupIds:
         - Ref: K8SSecurityGroup
       SubnetId:
@@ -89,8 +89,7 @@ Resources:
         Ref: InstanceProfile
       ImageId:
         Ref: ImageId
-      #InstanceType: !FindInMap [WInstanceMap, Instancetype, dev]
-      InstanceType: !Sub ${WTYPE}
+      InstanceType: !FindInMap [WInstanceMap, Instancetype, dev]
       SecurityGroupIds:
         - Ref: K8SSecurityGroup
       SubnetId:
@@ -140,7 +139,7 @@ Resources:
         Ref: InstanceProfile
       ImageId:
         Ref: ImageId
-      InstanceType: !Sub ${WTYPE}
+      InstanceType: !FindInMap [WInstanceMap, Instancetype, dev] 
       SecurityGroupIds:
         - Ref: K8SSecurityGroup
       SubnetId:
@@ -190,7 +189,7 @@ Resources:
         Ref: InstanceProfile
       ImageId:
         Ref: ImageId
-      InstanceType: !FindInMap [WInstanceMap, Instancetype, dev]
+      InstanceType: !FindInMap [MInstanceMap, Instancetype, test]
       SecurityGroupIds:
         - Ref: LBSecurityGroup
       SubnetId:
