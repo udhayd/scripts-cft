@@ -13,8 +13,8 @@ export AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
 HOSTNAME=$(hostname)
 ETCD_NAME=$(hostname -s)
 MASTER_1=$(grep master /etc/hosts|tail -1|awk '{print $1}')
-WORKER_1=$(grep worker-1 /etc/hosts|tail -1|awk '{print $1}')
-WORKER_2=$(grep worker-2 /etc/hosts|tail -1|awk '{print $1}')
+WORKER_1=$(grep worker1 /etc/hosts|tail -1|awk '{print $1}')
+WORKER_2=$(grep worker2 /etc/hosts|tail -1|awk '{print $1}')
 INTERNAL_IP=$(grep $HOSTNAME /etc/hosts|tail -1|awk '{print $1}')
 LOADBALANCER=$(grep $HOSTNAME /etc/hosts|tail -1|awk '{print $1}')
 #LOADBALANCER=$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PublicIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep nginx|awk '{print $1}')
@@ -209,7 +209,7 @@ echo -e "\n" "Step2.10 ====> Distribute Certificates"
        etcd-server.key etcd-server.crt kube-controller-manager.key kube-controller-manager.crt \
        kube-scheduler.key kube-scheduler.crt ${instance}:~/
   done
-  for instance in worker-1 worker-2; 
+  for instance in worker1 worker2; 
   do
     scp -o StrictHostKeyChecking=no ca.crt ca.key kube-proxy.crt kube-proxy.key ${instance}:~/
   done
@@ -300,7 +300,7 @@ echo -e "\n" "Step3.4 ====> Generate kubeconfig file for admin user"
 
 echo -e "\n" "Step3.5 ====> Distribute kubeconfig files"
 {
-  for instance in worker-1 worker-2; 
+  for instance in worker1 worker2; 
   do
     scp -o StrictHostKeyChecking=no kube-proxy.kubeconfig ${instance}:~/
   done
@@ -563,13 +563,13 @@ basicConstraints = CA:FALSE
 keyUsage = nonRepudiation, digitalSignature, keyEncipherment
 subjectAltName = @alt_names
 [alt_names]
-DNS.1 = worker-1
-DNS.2 = worker-2
+DNS.1 = worker1
+DNS.2 = worker2
 IP.1 = ${WORKER_1}
 IP.2 = ${WORKER_2}
 EOF
 
-  for wrk in worker-1 worker-2;
+  for wrk in worker1 worker2;
   do
     openssl genrsa -out $wrk.key 2048
     openssl req -new -key $wrk.key -subj "/CN=system:node:$wrk/O=system:nodes" -out $wrk.csr -config openssl-worker.cnf
