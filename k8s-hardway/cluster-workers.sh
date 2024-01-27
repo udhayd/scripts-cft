@@ -1,15 +1,15 @@
 #! /bin/bash
 ##################################################################################################
 ##### Description: Script to configure worker Nodes to join kubernetes cluster               #####
-##### Usage: ./configure-workernodes.sh                                                      #####
+##### Usage: ./cluster-workers.sh                                                            #####
 ##### Version: 1.0                                                                           #####
 ##################################################################################################
 
 set -ev
 ### Variable Initialization
 KUBE_VERSION=$1
-#export AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
-#export AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
+export AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
+export AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
 HOSTNAME=$(hostname)
 ETCD_NAME=$(hostname -s)
 MASTER_1=$(grep master1 /etc/hosts|awk '{print $1}')
@@ -43,8 +43,8 @@ echo -e "\n" "Step1 ====> Installing Containerd"
   curl -kLO https://download.docker.com/linux/centos/${OS_VERSION}/x86_64/stable/Packages/${RPM_FILE}
   curl -kLO https://github.com/containernetworking/plugins/releases/download/${KUBERNETES_CNI}/cni-plugins-linux-amd64-${KUBERNETES_CNI}.tgz
   mkdir -p /opt/cni/bin && { cd /opt/cni/bin;tar -xzvf /root/cni-plugins-linux-amd64-${KUBERNETES_CNI}.tgz;cd /root; }
-  yum install -y container-selinux ipvsadm ipset
-  rpm -ihv ${RPM_FILE}
+  yum install -y containerd container-selinux ipvsadm ipset
+  #rpm -ihv ${RPM_FILE}
   mkdir -p /etc/containerd
   containerd config default | sed 's/SystemdCgroup = false/SystemdCgroup = true/' | sudo tee /etc/containerd/config.toml
   systemctl restart containerd

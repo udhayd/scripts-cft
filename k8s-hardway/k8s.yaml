@@ -58,8 +58,8 @@ Resources:
             set -x
             exec >/root/bootstrap.log 2>&1
             cd /root
-            hostname master1
-            echo master1  >/etc/hostname
+            hostname master
+            echo master  >/etc/hostname
             cat >>/root/.bash_profile <<EOF
             alias c=clear
             alias kc=kubectl
@@ -75,13 +75,16 @@ Resources:
             yum install ksh git telnet  -y
             until aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running|grep worker; do  sleep 10; done
             aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running>/tmp/$$
-            sed -i 's/master.*/&  master1/' /tmp/$$
+            sed -i 's/master.*/&  master/' /tmp/$$
             sed -i 's/worker1.*/&  worker1/' /tmp/$$
             sed -i 's/worker2.*/&  worker2/' /tmp/$$
             sed -i 's/nginx.*/&  loadbalancer/' /tmp/$$
             cat /tmp/$$|awk '{print $1, " " , $2," " , $5}' >>/etc/hosts
             echo "00 16 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
             systemctl restart crond
+            git clone https://github.com/udhayd/scripts-cft.git && { cd scripts-cft;git checkout new;mv k8s-hardway/cluster-* /root;cd /root;chmod 755 /root/cluster-*;rm -rf scripts-cft; }
+            sed -i -e 's/\r$//' /root/cluster-*.sh
+            echo "********END TASK******************"
             
 
   Workernode1:
@@ -125,13 +128,15 @@ Resources:
             until aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running|grep $i; do sleep 10;done
             done
             aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running >/tmp/$$
-            sed -i 's/master.*/&  master1/' /tmp/$$
+            sed -i 's/master.*/&  master/' /tmp/$$
             sed -i 's/worker1.*/&  worker1/' /tmp/$$
             sed -i 's/worker2.*/&  worker2/' /tmp/$$
             sed -i 's/nginx.*/&  loadbalancer/' /tmp/$$
             cat /tmp/$$|awk '{print $1, " " , $2," " , $5}' >>/etc/hosts
             echo "00 16 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
             systemctl restart crond
+            echo "********END TASK******************"
+
 
   Workernode2:
     Type: AWS::EC2::Instance
@@ -167,15 +172,20 @@ Resources:
             export AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
             until aws ssm get-parameters --name master-${STK} --query 'Parameters[*].Value' --output text|grep ssh; do  sleep 10; done 
             aws ssm get-parameters --name master-${STK} --query 'Parameters[*].Value' --output text >/root/.ssh/authorized_keys
-            yum install ksh telnet docker -y
+            yum install ksh telnet -y
+            for i in master worker1 worker2
+            do
+              until aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running|grep $i; do sleep 10;done
+            done
             aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running>/tmp/$$
-            sed -i 's/master.*/&  master1/' /tmp/$$
+            sed -i 's/master.*/&  master/' /tmp/$$
             sed -i 's/worker1.*/&  worker1/' /tmp/$$
             sed -i 's/worker2.*/&  worker2/' /tmp/$$
             sed -i 's/nginx.*/&  loadbalancer/' /tmp/$$
             cat /tmp/$$|awk '{print $1, " " , $2," " , $5}' >>/etc/hosts
             echo "00 16 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
             systemctl restart crond
+            echo "********END TASK******************"
 
 
   nginxnode:
@@ -223,7 +233,7 @@ Resources:
             done
             aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep ${STK}|grep running>/tmp/$$
             cat /tmp/$$|awk '{print $1, " " , $2}' >>/etc/hosts
-            wrkr2=$(grep worker2 /etc/hosts|awk '{prin $1}')
+            wrkr2=$(grep worker2 /etc/hosts|awk '{print $1}')
             wrkr1=$(grep worker1 /etc/hosts|awk '{print $1}')
             mastr=$(grep master /etc/hosts|awk '{print $1}')
             amazon-linux-extras install epel -y
@@ -289,6 +299,7 @@ Resources:
             pubip=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
             echo "00 16 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
             systemctl restart crond
+            echo "********END TASK******************"
 
 
   ParameterStore:

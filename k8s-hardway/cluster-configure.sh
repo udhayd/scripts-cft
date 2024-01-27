@@ -8,8 +8,8 @@
 set -ev
 ### Variable Initialization
 KUBE_VERSION=$1
-#export AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
-#export AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
+export AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
+export AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
 HOSTNAME=$(hostname)
 ETCD_NAME=$(hostname -s)
 MASTER_1=$(grep master /etc/hosts|tail -1|awk '{print $1}')
