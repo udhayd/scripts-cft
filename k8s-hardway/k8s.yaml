@@ -66,6 +66,10 @@ Resources:
             set -o vi
             PS1=\$(hostname):'\$PWD# '
             export PS1
+            ssh-exec () 
+            {
+            for i in master worker1 worker2;do  echo;echo "******\$i******";ssh -o StrictHostKeyChecking=no \$i \$@;echo "******************";done
+            }
             EOF
             AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
             export AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
