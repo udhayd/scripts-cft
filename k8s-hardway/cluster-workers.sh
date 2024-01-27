@@ -5,6 +5,7 @@
 ##### Version: 1.0                                                                           #####
 ##################################################################################################
 
+set -ev
 ### Variable Initialization
 KUBE_VERSION=$1
 #export AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
@@ -40,7 +41,7 @@ echo -e "\n" "Step1 ====> Installing Containerd"
   cd /root
   sed -i '/swap/d' /etc/fstab && swapoff -a
   curl -kLO https://download.docker.com/linux/centos/${OS_VERSION}/x86_64/stable/Packages/${RPM_FILE}
-  curl -KLO https://github.com/containernetworking/plugins/releases/download/${KUBERNETES_CNI}/cni-plugins-linux-amd64-${KUBERNETES_CNI}.tgz
+  curl -kLO https://github.com/containernetworking/plugins/releases/download/${KUBERNETES_CNI}/cni-plugins-linux-amd64-${KUBERNETES_CNI}.tgz
   mkdir -p /opt/cni/bin && { cd /opt/cni/bin;tar -xzvf /root/cni-plugins-linux-amd64-${KUBERNETES_CNI}.tgz; }
   yum install -y container-selinux ipvsadm ipset
   mkdir -p /etc/containerd

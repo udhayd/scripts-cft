@@ -599,7 +599,7 @@ EOF
 ### Step8 Pod Network Provisioning
 echo -e "\n" "Step8.1 ====> Deploy Flannel Network"
 {
-  mkdir /root/.kube && cp admin.kubeconfig /root/.kube/config
+  cp admin.kubeconfig /root/.kube/config
   wget --no-check-certificate https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
   kubectl apply -f kube-flannel.yml
 }
