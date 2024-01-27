@@ -78,7 +78,7 @@ Resources:
             cat /tmp/$$|awk '{print $1, " " , $2," " , $5}' >>/etc/hosts
             echo "00 16 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
             systemctl restart crond
-            git clone https://github.com/udhayd/scripts-cft.git && { cd scripts-cft;git checkout new;mv k8s-hardway/cluster-* /root;cd /root;chmod 755 /root/cluster-*;rm -rf scripts-cft; }
+            git clone https://github.com/udhayd/scripts-cft.git && { cd scripts-cft;mv k8s-hardway/cluster-* /root;cd /root;chmod 755 /root/cluster-*;rm -rf scripts-cft; }
             sed -i -e 's/\r$//' /root/cluster-*.sh
             ssh-exec "tail -2 /root/bootstrap.log;cat /etc/hosts"
             echo "********END TASK******************"
