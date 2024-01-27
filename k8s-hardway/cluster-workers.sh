@@ -44,6 +44,7 @@ echo -e "\n" "Step1 ====> Installing Containerd"
   curl -kLO https://github.com/containernetworking/plugins/releases/download/${KUBERNETES_CNI}/cni-plugins-linux-amd64-${KUBERNETES_CNI}.tgz
   mkdir -p /opt/cni/bin && { cd /opt/cni/bin;tar -xzvf /root/cni-plugins-linux-amd64-${KUBERNETES_CNI}.tgz; }
   yum install -y container-selinux ipvsadm ipset
+  rpm -ihv {RPM_FILE}
   mkdir -p /etc/containerd
   containerd config default | sed 's/SystemdCgroup = false/SystemdCgroup = true/' | sudo tee /etc/containerd/config.toml
   systemctl restart containerd
