@@ -42,7 +42,7 @@ echo -e "\n" "Step1 ====> Installing Containerd"
   sed -i '/swap/d' /etc/fstab && swapoff -a
   curl -kLO https://download.docker.com/linux/centos/${OS_VERSION}/x86_64/stable/Packages/${RPM_FILE}
   curl -kLO https://github.com/containernetworking/plugins/releases/download/${KUBERNETES_CNI}/cni-plugins-linux-amd64-${KUBERNETES_CNI}.tgz
-  mkdir -p /opt/cni/bin && { cd /opt/cni/bin;tar -xzvf /root/cni-plugins-linux-amd64-${KUBERNETES_CNI}.tgz; }
+  mkdir -p /opt/cni/bin && { cd /opt/cni/bin;tar -xzvf /root/cni-plugins-linux-amd64-${KUBERNETES_CNI}.tgz;cd /root; }
   yum install -y container-selinux ipvsadm ipset
   rpm -ihv ${RPM_FILE}
   mkdir -p /etc/containerd
