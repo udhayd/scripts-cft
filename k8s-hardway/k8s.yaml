@@ -62,6 +62,7 @@ Resources:
             for i in master worker1 worker2;do  echo;echo "******\$i******";ssh -o StrictHostKeyChecking=no \$i \$@;echo "******************";done
             }
             EOF
+            source /root/.bash_profile
             AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
             export AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
             ssh-keygen -t rsa -f /root/.ssh/id_rsa -q -P ""
@@ -79,6 +80,7 @@ Resources:
             systemctl restart crond
             git clone https://github.com/udhayd/scripts-cft.git && { cd scripts-cft;git checkout new;mv k8s-hardway/cluster-* /root;cd /root;chmod 755 /root/cluster-*;rm -rf scripts-cft; }
             sed -i -e 's/\r$//' /root/cluster-*.sh
+            ssh-exec "tail -2 /root/bootstrap.log;cat /etc/hosts"
             echo "********END TASK******************"
             
 
