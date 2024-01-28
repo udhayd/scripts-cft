@@ -409,7 +409,7 @@ echo -e "\n" "Step5.3 ====> Start ETCD Server"
 ### Step6 Bootstrapping Kubernetes Control Plane
 echo -e "\n" "Step6.1 ====> Download and Install Kubernetes Controller Binaries"
 {
-  wget -q "https://dl.k8s.io/release/${KUBE_VERSION}/bin/linux/amd64/kube-apiserver" \
+  wget --no-check-certificate "https://dl.k8s.io/release/${KUBE_VERSION}/bin/linux/amd64/kube-apiserver" \
     "https://dl.k8s.io/release/${KUBE_VERSION}/bin/linux/amd64/kube-controller-manager" \
     "https://dl.k8s.io/release/${KUBE_VERSION}/bin/linux/amd64/kube-scheduler" \
     "https://dl.k8s.io/release/${KUBE_VERSION}/bin/linux/amd64/kubectl"
