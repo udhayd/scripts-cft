@@ -1,0 +1,104 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# Internal network prefix for the VM Network
+IP_NW = "192.168.56."
+
+# Host address start point
+NODE_IP_START = 10
+
+# All Vagrant configuration is done below. The "2" in Vagrant.configure
+Vagrant.configure("2") do |config|
+
+  ### Vagrant Box Image Name for VM
+  config.vm.box = "centos/7"
+
+  ### Provision master node
+  config.vm.define "master" do |node|
+
+    node.vm.provider "virtualbox" do |vb|
+      vb.name   = "master"
+      vb.memory = 1200
+      vb.cpus   = 1
+    end
+
+    node.vm.hostname = "master"
+
+    node.vm.network :private_network, ip: "192.168.56.4"
+
+    node.vm.provision "shell", inline: <<-SHELL
+      mkdir /root/.ssh
+      test -f /vagrant/ssh/id_rsa && { mv /vagrant/ssh/id_rsa* /root/.ssh/; } || echo "SSH Keys Not Found"
+      mv /vagrant/cluster* /root;chmod 755 /root/cluster*;chown root:root /root/cluster*;sed -i -e 's/\r$//' /root/cluster*
+      test -f /root/.ssh/id_rsa.pub && { cp /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys;chown -R root:root /root/.ssh;chmod -R 700 /root/.ssh; }  || echo "SSH Keys not configured, Please configure Passwordless Authentication between master & worker odes"
+      echo "
+      ## K8s nodes
+      192.168.56.4   master
+      192.168.56.11  worker1
+      192.168.56.12  worker2" >>/etc/hosts
+      #### Nginx Loadbalancer Configuration
+      yum install -y epel-release
+      yum install -y nginx
+      cd /etc/nginx/
+      wrkr2=$(grep worker2 /etc/hosts|awk '{print $1}')
+      wrkr1=$(grep worker1 /etc/hosts|awk '{print $1}')
+      mastr=$(grep master /etc/hosts|awk '{print $1}')
+      export wrkr2 wrkr1 mastr
+      envsubst < /vagrant/nginx.conf >/etc/nginx/nginx.conf
+      systemctl enable nginx && { systemctl start nginx;systemctl status nginx; }
+    SHELL
+  end
+
+  ### Provision worker nodes
+  (1..2).each do |i|
+
+    config.vm.define "worker#{i}" do |node|
+
+      node.vm.provider "virtualbox" do |vb|
+        vb.name   = "worker#{i}"
+        vb.memory = 1500
+        vb.cpus   = 1
+      end
+
+      node.vm.hostname = "worker#{i}"
+
+      node.vm.network :private_network, ip: IP_NW + "#{NODE_IP_START + i}"
+
+      node.vm.provision "shell", inline: <<-SHELL
+        mkdir /root/.ssh;chmod 700 /root/.ssh
+        test -f /vagrant/ssh/id_rsa.pub && { mv /vagrant/ssh/id_rsa.pub /root/.ssh/authorized_keys;rm -rf /vagrant/*;chown -R root:root /root/.ssh; } || echo "SSH Public Key Not Found"
+        echo "
+        ## K8s nodes
+        192.168.56.4   master
+        192.168.56.11  worker1
+        192.168.56.12  worker2" >>/etc/hosts     
+      SHELL
+    end
+  end
+
+  ### Add Network adapter for all VMs
+  config.vm.network "public_network", bridge: [
+     "en1: Realtek RTL8822CE 802.11ac PCIe Adapter"
+    ]
+
+  ### Provisioner shell command Execution
+  config.vm.provision "shell", inline: <<-SHELL
+    yum install -y net-tools ksh wget 
+    echo "set -o vi" >>/root/.bash_profile
+    getenforce|grep Enforcing && setenforce Permissive
+    sed -i -E 's/SELINUX=[^ ]*/SELINUX=disabled/g'  /etc/selinux/config
+    sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/g' /etc/ssh/sshd_config
+    sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/g' /etc/ssh/sshd_config
+    systemctl restart sshd
+    echo "root123" | passwd root --stdin
+    echo '
+    alias c=clear
+    alias kc=kubectl
+    set -o vi
+    ssh-exec () 
+    {
+    for i in master worker1 worker2;do  echo;echo "******\$i******";ssh -o StrictHostKeyChecking=no \$i \$@;echo "******************";done
+    }' >>/root/.bash_profile
+  SHELL
+
+end
