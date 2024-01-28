@@ -1,7 +1,7 @@
 # K8S Cluster - Hardway
 
 ## Introduction:
-Following Script creates 3 vms (master,worker1,worker2) to setup K8s cluster HardWay, using vagrant.
+This script creates 3 vms (master,worker1,worker2) to setup K8s cluster HardWay, using vagrant.
 
 ## PREQUISITES: 
 - vagrant to provision vms using template. Please refer https://developer.hashicorp.com/vagrant/install?product_intent=vagrant for vagrant deployment.
@@ -12,9 +12,10 @@ Following Script creates 3 vms (master,worker1,worker2) to setup K8s cluster Har
    ```sh
    git clone https://github.com/udhayd/scripts-cft
    ```
-2. Execute Cloudformation Template.
+2. Execute vagrant Template.
    ```sh
    cd scripts-cft/k8s-hardway/vagrant
+   mkdir ssh && ssh-keygen -t rsa -f ssh/id_rsa -q -P ""
    vagrant up 
    ```
 
