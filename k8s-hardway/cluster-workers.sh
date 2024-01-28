@@ -52,7 +52,7 @@ echo -e "\n" "Step1 ====> Installing Containerd"
 
 ### Step2 Download and Install Worker Binaries
 echo -e "\n" "Step2 ====> Download and Install Worker Binaries"
-  wget -q https://dl.k8s.io/release/${KUBE_VERSION}/bin/linux/amd64/kube-proxy https://dl.k8s.io/release/${KUBE_VERSION}/bin/linux/amd64/kubelet 
+  wget --no-check-certificate https://dl.k8s.io/release/${KUBE_VERSION}/bin/linux/amd64/kube-proxy https://dl.k8s.io/release/${KUBE_VERSION}/bin/linux/amd64/kubelet 
   mkdir -p /var/lib/kubelet /var/lib/kube-proxy /var/lib/kubernetes/pki /var/run/kubernetes
   chmod +x kube-proxy kubelet
   mv kube-proxy kubelet /usr/local/bin/
