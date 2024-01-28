@@ -4,8 +4,8 @@
 Following Script creates 3 vms (master,worker1,worker2) to setup K8s cluster HardWay, using vagrant.
 
 ## PREQUISITES: 
-- vagrant to provision vms using template.Please refer to https://developer.hashicorp.com/vagrant/install?product_intent=vagrant
-- Oracle Virtualbox to create VMs.
+- vagrant to provision vms using template. Please refer https://developer.hashicorp.com/vagrant/install?product_intent=vagrant for vagrant deployment.
+- Oracle Virtualbox to create VMs. Please refer https://www.virtualbox.org/wiki/Downloads for oracle virtualbox download.
 
 ## To Create VM for cluster Build
 1. Clone a Git repository.
