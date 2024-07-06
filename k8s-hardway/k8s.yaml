@@ -301,7 +301,7 @@ Resources:
   ParameterStore:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: !Sub master-${STK}
+      Name: !Sub "${AWS::StackName}-K8S"
       Type: String
       Value: data
       Description: SSM Parameter for pub key
@@ -310,9 +310,9 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupName:
-        Fn::Sub: "${AWS::StackName}-LB-SG"
+        Fn::Sub: "${AWS::StackName}-LB"
       GroupDescription:
-        Fn::Sub: "${AWS::StackName} LB SG"
+        Fn::Sub: "${AWS::StackName} LB"
       VpcId:
         Fn::ImportValue: MyVPCID
       SecurityGroupIngress:
@@ -331,9 +331,9 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupName:
-        Fn::Sub: "${AWS::StackName}-K8S-SG"
+        Fn::Sub: "${AWS::StackName}-K8S"
       GroupDescription:
-        Fn::Sub: "${AWS::StackName} K8S SG"
+        Fn::Sub: "${AWS::StackName} K8S"
       VpcId:
         Fn::ImportValue: MyVPCID
   K8SSGIngress:
@@ -352,17 +352,19 @@ Resources:
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
+      InstanceProfileName: !Sub "${AWS::StackName}-K8S"
       Roles:
         - Ref: InstanceRole
 
   InstanceRole:
     Type: AWS::IAM::Role
     Properties:
+      Description: "IAM role to connect to EC2 Instance"
+      RoleName: !Sub "${AWS::StackName}-K8S"
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
-          -
-            Effect: Allow
+          - Effect: Allow
             Principal:
               Service:
                 - ec2.amazonaws.com
