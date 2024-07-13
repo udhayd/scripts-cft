@@ -20,14 +20,15 @@ exit 1
 fi
 
 ### K8s Cluster Initialization
-kubeadm init --pod-network-cidr=10.244.0.0/16 --apiserver-advertise-address=$INTERNAL_IP --kubernetes-version=$VER --ignore-preflight-errors all
+kubeadm init --pod-network-cidr=10.244.0.0/16  --kubernetes-version=$VER --ignore-preflight-errors all
 if [ $? -eq 0 ]
 then
    mkdir -p /root/.kube
    cp -i /etc/kubernetes/admin.conf /root/.kube/config
    chown $(id -u):$(id -g) /root/.kube/config
    export KUBECONFIG=/etc/kubernetes/admin.conf
-   kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+   kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/calico.yaml
+   #kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
 else
    echo "Cluster Initialization Failed"
 fi

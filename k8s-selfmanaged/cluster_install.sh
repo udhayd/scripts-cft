@@ -18,8 +18,6 @@ then
 echo "Please provide clusterversion as parameter"
 echo "Usage: $0 1.x.x"
 exit 1
-else
-VER=$1
 fi
 
 ### Configure Yum Repository
@@ -31,9 +29,8 @@ baseurl=https://pkgs.k8s.io/core:/stable:/v$VER/rpm/
 enabled=1
 gpgcheck=1
 gpgkey=https://pkgs.k8s.io/core:/stable:/v$VER/rpm/repodata/repomd.xml.key
-exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
+##exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
 EOF
-
 yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
 
 ### Install Kubernetes & Container packages
@@ -41,6 +38,7 @@ if ! rpm -q kubelet kubeadm kubectl containerd.io
 then
 yum install -y kubeadm-$1 kubectl-$1 kubelet-$1 containerd.io
 mkdir -p /etc/containerd && containerd config default > /etc/containerd/config.toml
+sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
 fi
 
 ### Configure Kernel modules
@@ -60,7 +58,7 @@ net.bridge.bridge-nf-call-iptables  = 1
 net.ipv4.ip_forward                 = 1
 EOF
 
-[ $(getenforce) ] && echo "Disable" || setenforce 0
+setenforce 0
 sed -i -E "s/SELINUX=[^ ]*/SELINUX=disabled/g" /etc/selinux/config
 sed -i '/swap/d' /etc/fstab
 swapoff -a
