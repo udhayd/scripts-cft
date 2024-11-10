@@ -57,10 +57,10 @@ aws cloudformation deploy --no-fail-on-empty-changeset --template-file ekscluste
     NodeGroupName=$NODE_GROUP_NAME    
 
 export AWS_PAGER=""
-if ! aws eks describe-cluster --name $CLUSTER_NAME --output text|grep CLUSTERLOGGING|grep -i true  >/dev/null 2>&1
-then
-aws eks update-cluster-config --name $CLUSTER_NAME --logging '{"clusterLogging":[{"types":["api","audit","authenticator","controllerManager","scheduler"],"enabled":true}]}' 
-fi
+#if ! aws eks describe-cluster --name $CLUSTER_NAME --output text|grep CLUSTERLOGGING|grep -i true  >/dev/null 2>&1
+#then
+#aws eks update-cluster-config --name $CLUSTER_NAME --logging '{"clusterLogging":[{"types":["api","audit","authenticator","controllerManager","scheduler"],"enabled":true}]}' 
+#fi
 
 aws eks wait cluster-active --name $CLUSTER_NAME
 
