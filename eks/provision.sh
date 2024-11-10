@@ -93,4 +93,4 @@ fi
 rm auth.yaml
 
 #### Install EBS CSI Driver
-bash ebs-csi.sh
+##bash ebs-csi.sh
