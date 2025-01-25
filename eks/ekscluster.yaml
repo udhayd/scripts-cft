@@ -114,7 +114,7 @@ Resources:
   NodeInstanceRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub ${EKSClusterName}-noderole
+      RoleName: eksWorkerNodeRole
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
