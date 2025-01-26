@@ -31,12 +31,12 @@ gpgcheck=1
 gpgkey=https://pkgs.k8s.io/core:/stable:/v$VER/rpm/repodata/repomd.xml.key
 ##exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
 EOF
-yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+#yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
 
 ### Install Kubernetes & Container packages
-if ! rpm -q kubelet kubeadm kubectl containerd.io
+if ! rpm -q kubelet kubeadm kubectl containerd
 then
-yum install -y kubeadm-$1 kubectl-$1 kubelet-$1 containerd.io
+yum install -y kubeadm-$1 kubectl-$1 kubelet-$1 containerd --disableexcludes=kubernetes
 mkdir -p /etc/containerd && containerd config default > /etc/containerd/config.toml
 sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
 fi
@@ -47,7 +47,7 @@ overlay
 br_netfilter
 EOF
 
-modprobe overlay
+modprobe overlay 
 modprobe br_netfilter
 
 if [ ! -f /etc/sysctl.d/k8s.conf ]
@@ -66,7 +66,7 @@ sysctl --system
 fi
 
 ### Start/Enable Containerd & Kubelet Service
-if rpm -q kubelet kubeadm kubectl containerd.io
+if rpm -q kubelet kubeadm kubectl containerd
 then
    systemctl enable kubelet && systemctl start kubelet
    systemctl enable containerd && systemctl start containerd
