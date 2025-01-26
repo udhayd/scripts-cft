@@ -43,4 +43,4 @@ source vars.sh
 set -ex
 
 #### K8s Stack Creation
-aws cloudformation deploy --template-file k8s.yaml --stack-name $EC2_STACK_NAME --no-fail-on-empty-changeset --capabilities CAPABILITY_IAM --parameter-overrides STK=$EC2_STACK_NAME 
+aws cloudformation deploy --template-file k8s.yaml --stack-name $EC2_STACK_NAME --no-fail-on-empty-changeset --capabilities CAPABILITY_NAMED_IAM --parameter-overrides STK=$EC2_STACK_NAME 

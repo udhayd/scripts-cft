@@ -14,31 +14,6 @@ usage() {
     echo " -n, --name  name of stack"
 }
 
-#### To validate the k8s property file
-prop_validate ()
-{
-if [ ! $(cat config.properties|grep -v '#'|grep $1) ]
-then
-echo "$1 property not defined in config.properties file ,Please define !"
-exit 255
-elif [ -z $(cat config.properties|grep -v '#'|grep $1|awk -F'=' '{print $2}') ]
-then
-echo "$1 property is null Please set ! "
-exit 255
-fi
-}
-configfile_validate () 
-{
-if [ ! -f config.properties ]
-then
-echo "config.properties file doesn't Exist, Please create with version tag. Eg: version=1.19 "
-exit 255
-fi
-prop_validate version
-prop_validate mtype
-prop_validate wtype
-}
-
 #### To validate the Arguments
 if [ $# -eq 2 ]
 then
@@ -47,17 +22,15 @@ then
     if [ $? -ne 0 ]
     then
         echo ""
-	echo "Network stack doesnt exist, Executing VPC Stack First ..."
-	cd vpc
-        ./provision.sh -n $2-vpc
+        echo "Network stack doesnt exist, Executing VPC Stack First ..."
+        cd ../vpc
+        ./provision.sh -n $2
+        echo ""
+        cd ../k8s-hardway
 	echo ""
-	cd ../ 
-        configfile_validate
-	echo "Executing K8s Stack ..."
-	echo ""
+        echo "Executing K8s Stack ..."
     fi
     echo ""
-    configfile_validate
     echo "Executing K8s Stack ..."
 else
     usage
@@ -65,13 +38,9 @@ else
 fi
 
 #### Varible Initialization
-echo "EC2_STACK_NAME=$2-k8s
-ROUTE_STACK_NAME=$2-route53" >vars.sh
-ver=$(cat config.properties|grep -v '#'|grep version|awk -F'=' '{print $2}')
-mtyp=$(cat config.properties|grep -v '#'|grep mtype|awk -F'=' '{print $2}')
-wtyp=$(cat config.properties|grep -v '#'|grep wtype|awk -F'=' '{print $2}')
+echo "EC2_STACK_NAME=$2-k8s" >vars.sh
 source vars.sh
 set -ex
 
 #### K8s Stack Creation
-aws cloudformation deploy --template-file k8s.yaml --stack-name $EC2_STACK_NAME --no-fail-on-empty-changeset --capabilities CAPABILITY_IAM --parameter-overrides STK=$EC2_STACK_NAME  VER=$ver MTYPE=$mtyp WTYPE=$wtyp 
+aws cloudformation deploy --template-file k8s.yaml --stack-name $EC2_STACK_NAME --no-fail-on-empty-changeset --capabilities CAPABILITY_NAMED_IAM --parameter-overrides STK=$EC2_STACK_NAME 
