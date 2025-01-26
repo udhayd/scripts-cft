@@ -6,7 +6,7 @@
 ####  Usage: ./cluster_remove.sh                                                                              ####
 ##################################################################################################################
 
-set -e
+#set -e
 ### To Remove Cluster
 if rpm -q kubelet kubeadm kubectl containerd
 then

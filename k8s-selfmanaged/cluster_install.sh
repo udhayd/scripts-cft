@@ -6,7 +6,7 @@
 ####  Usage: ./cluster_install.sh 1.x.x                                                                       ####
 ##################################################################################################################
 
-set -e
+#set -e
 ### Variable Initilization
 VER=$(echo $1 | cut -d'.'  -f1,2)
 INTERNAL_IP=$(grep master /etc/hosts|tail -1| awk '{print $1}')

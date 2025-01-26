@@ -6,7 +6,7 @@
 ####  Usage: ./cluster_config.sh 1.x.x                                                                        ####
 ##################################################################################################################
 
-set -e
+#set -e
 ### Variable Initilization
 VER=$1
 INTERNAL_IP=$(grep master /etc/hosts|tail -1| awk '{print $1}')
