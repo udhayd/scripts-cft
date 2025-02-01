@@ -69,7 +69,7 @@ Resources:
             systemctl status amazon-ssm-agent
             curl https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o awscliv2.zip
             unzip awscliv2.zip
-            sudo ./aws/install
+            sudo ./aws/install && rm -rf aws* README*
             curl -OL https://github.com/okd-project/okd/releases/download/4.17.0-okd-scos.0/openshift-install-linux-4.17.0-okd-scos.0.tar.gz
             tar -xzvf openshift-install-linux*.tar.gz;mv openshift-install /usr/local/bin/
             USER=$(aws iam list-users --output text|awk '{print $7}')
