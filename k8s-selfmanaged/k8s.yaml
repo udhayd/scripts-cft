@@ -225,9 +225,9 @@ Resources:
             do
               echo "Waiting for worker nodes to be created";
               sleep 3;
-              i=$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|grep ${STK}|wc -l)
+              i=$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|grep ${STK}|grep -i running|wc -l)
             done
-            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep ${STK}|grep running>/tmp/$$
+            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep ${STK}|grep -i running>/tmp/$$
             cat /tmp/$$|awk '{print $1, " " , $2}' >>/etc/hosts
             wrkr2=$(grep worker2 /etc/hosts|awk '{print $1}')
             wrkr1=$(grep worker1 /etc/hosts|awk '{print $1}')
