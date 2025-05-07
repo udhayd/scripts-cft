@@ -7,7 +7,7 @@ cd traefik/chart/
 helm dep update
 helm install ingress . -n ingress
 
-lbip=$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PublicIpAddress,Tags[?Key==\`Name\`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep nginx|awk '{print $1}')
+lbip=$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PublicIpAddress,Tags[?Key==\`Name\`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep -i running|grep nginx|awk '{print $1}')
 echo "
 spec:
   externalIPs:
