@@ -69,8 +69,8 @@ Resources:
             cp /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys
             aws ssm put-parameter --name master-${STK} --value "$(cat /root/.ssh/id_rsa.pub)" --type String --overwrite
             yum install ksh git telnet  -y
-            until aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running|grep worker; do  sleep 10; done
-            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running>/tmp/$$
+            until aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --filters Name=instance-state-name,Values=running --output text|column -t|grep ${STK}|grep worker; do  sleep 10; done
+            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --filters Name=instance-state-name,Values=running --output text|column -t|grep ${STK} >/tmp/$$
             sed -i 's/master.*/&  master/' /tmp/$$
             sed -i 's/worker1.*/&  worker1/' /tmp/$$
             sed -i 's/worker2.*/&  worker2/' /tmp/$$
@@ -121,9 +121,9 @@ Resources:
             aws ssm get-parameters --name master-${STK} --query 'Parameters[*].Value' --output text >/root/.ssh/authorized_keys
             for i in master worker1 worker2
             do
-            until aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running|grep $i; do sleep 10;done
+            until aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --filters Name=instance-state-name,Values=running --output text|column -t|grep ${STK}|grep $i; do sleep 10;done
             done
-            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running >/tmp/$$
+            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --filters Name=instance-state-name,Values=running --output text|column -t|grep ${STK} >/tmp/$$
             sed -i 's/master.*/&  master/' /tmp/$$
             sed -i 's/worker1.*/&  worker1/' /tmp/$$
             sed -i 's/worker2.*/&  worker2/' /tmp/$$
@@ -171,9 +171,9 @@ Resources:
             yum install ksh telnet -y
             for i in master worker1 worker2
             do
-              until aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running|grep $i; do sleep 10;done
+              until aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --filters Name=instance-state-name,Values=running --output text|column -t|grep ${STK}|grep $i; do sleep 10;done
             done
-            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep ${STK}|grep running>/tmp/$$
+            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --filters Name=instance-state-name,Values=running --output text|column -t|grep ${STK} >/tmp/$$
             sed -i 's/master.*/&  master/' /tmp/$$
             sed -i 's/worker1.*/&  worker1/' /tmp/$$
             sed -i 's/worker2.*/&  worker2/' /tmp/$$
@@ -220,14 +220,14 @@ Resources:
             AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
             AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
             export AWS_DEFAULT_REGION
-            i=$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|grep ${STK}|grep -i running|wc -l)
+            i=$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]'  --filters Name=instance-state-name,Values=running --output text|grep ${STK}|wc -l)
             until [ $i == 4 ]
             do
               echo "Waiting for worker nodes to be created";
               sleep 3;
-              i=$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|grep ${STK}|grep -i running|wc -l)
+              i=$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --filters Name=instance-state-name,Values=running --output text|grep ${STK}|wc -l)
             done
-            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --output text|column -t|grep $D|grep ${STK}|grep -i running>/tmp/$$
+            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --filters Name=instance-state-name,Values=running --output text|column -t|grep $D|grep ${STK} >/tmp/$$
             cat /tmp/$$|awk '{print $1, " " , $2}' >>/etc/hosts
             wrkr2=$(grep worker2 /etc/hosts|awk '{print $1}')
             wrkr1=$(grep worker1 /etc/hosts|awk '{print $1}')
