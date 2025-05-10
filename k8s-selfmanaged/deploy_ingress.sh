@@ -42,4 +42,4 @@ curl -s -X PUT "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records/
 ## Deploy Sample application
 kubectl apply -f https://github.com/aws-containers/retail-store-sample-app/releases/latest/download/kubernetes.yaml
 kubectl wait --for=condition=available deployments --all
-kc create ing ing --rule="app.groofy.help/*=ui:80"
+kubectl create ing ing --rule="app.groofy.help/*=ui:80"
