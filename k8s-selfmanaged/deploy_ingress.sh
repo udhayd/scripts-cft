@@ -37,3 +37,9 @@ curl -s -X PUT "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records/
 -H "Authorization: Bearer $KEY" \
 -H "Content-Type: application/json" \
 --data '{"type":"'"$TYPE"'","name":"'"$NAME"'","content":"'"$CONTENT"'","proxied":'"$PROXIED"',"ttl":'"$TTL"'}' | python -m json.tool;
+
+
+## Deploy Sample application
+kubectl apply -f https://github.com/aws-containers/retail-store-sample-app/releases/latest/download/kubernetes.yaml
+kubectl wait --for=condition=available deployments --all
+kc create ing ing --rule="app.groofy.help/*=ui:80"
