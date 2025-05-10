@@ -1,12 +1,15 @@
 #! /bin/bash
 #### Script to build kubernetes cluster"
+
 #set -e
 export LOGS=/root/install_config.log
+
 ## Script usage
 if [ $# -ne 1 ]
 then
 echo -e "\n" "Usage: $0 1.x.x";
 echo -e "\n" "example: $0 1.28.0";
+exit 1;
 fi
 
 ## Cluster node Installation
