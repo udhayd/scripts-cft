@@ -32,6 +32,13 @@ Resources:
     Properties:
       IamInstanceProfile:
         Ref: InstanceProfile
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp2
+            VolumeSize: '20'
+            DeleteOnTermination: 'true'
+            Encrypted: 'true'
       ImageId:
         Ref: ImageId
       InstanceType: !FindInMap [MInstanceMap, Instancetype, dev]
@@ -89,6 +96,13 @@ Resources:
     Properties:
       IamInstanceProfile:
         Ref: InstanceProfile
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp2
+            VolumeSize: '20'
+            DeleteOnTermination: 'true'
+            Encrypted: 'true'
       ImageId:
         Ref: ImageId
       InstanceType: !FindInMap [WInstanceMap, Instancetype, dev]
@@ -139,6 +153,13 @@ Resources:
     Properties:
       IamInstanceProfile:
         Ref: InstanceProfile
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp2
+            VolumeSize: '20'
+            DeleteOnTermination: 'true'
+            Encrypted: 'true'
       ImageId:
         Ref: ImageId
       InstanceType: !FindInMap [WInstanceMap, Instancetype, dev] 

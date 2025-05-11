@@ -45,4 +45,4 @@ echo -e "\n" "Ingress controller deployment in-progress"
 echo -e "\n" "Ingress controller deployment" >>$LOGS 2>&1;
 bash deploy_ingress.sh >>$LOGS 2>&1;
 echo -e "\n" "Ingress controller deployed in cluster"
-echo -e "\n" "Sample application has been deployed , Can be accessed through http://app.groofy.help"
+echo -e "\n" "Sample application has been deployed , Can be accessed through https://app.groofy.help"
