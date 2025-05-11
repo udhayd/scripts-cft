@@ -61,6 +61,7 @@ Resources:
             cat >>/root/.bash_profile <<EOF
             alias c=clear
             alias kc=kubectl
+            alias k="kubectl get all"
             set -o vi
             PS1=\$(hostname):'\$PWD# '
             export PS1
