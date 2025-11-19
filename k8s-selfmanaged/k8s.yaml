@@ -5,7 +5,7 @@ Parameters:
   ImageId:
     Description: AMI Id
     Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
-    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+    Default: '/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64'
   STK:
     Description: "Name of stack"
     Type: String
@@ -56,6 +56,7 @@ Resources:
             set -x
             exec >/root/bootstrap.log 2>&1
             cd /root
+            TOKEN=`curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600"`
             hostname master
             echo master  >/etc/hostname
             cat >>/root/.bash_profile <<EOF
@@ -71,7 +72,7 @@ Resources:
             }
             EOF
             source /root/.bash_profile
-            AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
+            AZ=$(curl  -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
             export AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
             ssh-keygen -t rsa -f /root/.ssh/id_rsa -q -P ""
             cp /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys
@@ -119,7 +120,8 @@ Resources:
           Fn::Sub: |
             #!/bin/bash
             set -x
-            exec >/root/bootstrap.log 2>&1 
+            exec >/root/bootstrap.log 2>&1
+            TOKEN=`curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600"`
             hostname worker1
             cat >>/root/.bash_profile <<EOF
             alias c=clear
@@ -129,7 +131,7 @@ Resources:
             export PS1
             EOF
             echo worker1  >/etc/hostname
-            AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
+            AZ=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
             export AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
             yum install ksh telnet -y
             until aws ssm get-parameters --name master-${STK} --query 'Parameters[*].Value' --output text|grep ssh; do  sleep 10; done
@@ -177,6 +179,7 @@ Resources:
             #!/bin/bash
             set -x
             exec >/root/bootstrap.log 2>&1
+            TOKEN=`curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600"`
             hostname worker2
             echo worker2  >/etc/hostname
             cat >>/root/.bash_profile <<EOF
@@ -186,7 +189,7 @@ Resources:
             PS1=\$(hostname):'\$PWD# '
             export PS1
             EOF
-            AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
+            AZ=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
             export AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
             until aws ssm get-parameters --name master-${STK} --query 'Parameters[*].Value' --output text|grep ssh; do  sleep 10; done 
             aws ssm get-parameters --name master-${STK} --query 'Parameters[*].Value' --output text >/root/.ssh/authorized_keys
@@ -226,7 +229,8 @@ Resources:
           Fn::Sub: |
             #!/bin/bash
             set -x
-            exec >/root/bootstrap.log 2>&1 
+            exec >/root/bootstrap.log 2>&1
+            TOKEN=`curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600"`
             hostname nginx-${STK}
             echo nginx-${STK}  >/etc/hostname
             cat >>/root/.bash_profile <<EOF
@@ -239,7 +243,7 @@ Resources:
             
             #### Install and configure ngnix
             D=$(date +%Y-%m-%d)
-            AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
+            AZ=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
             AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
             export AWS_DEFAULT_REGION
             i=$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]'  --filters Name=instance-state-name,Values=running --output text|grep ${STK}|wc -l)
