@@ -60,6 +60,8 @@ Resources:
             EOF
             source /root/.bash_profile
             AZ=$(curl http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
+            OKD="https://github.com/okd-project/okd/releases/download/4.21.0-okd-scos.ec.9/openshift-install-linux-4.21.0-okd-scos.ec.9.tar.gz"
+            OC="https://mirror.openshift.com/pub/openshift-v4/clients/oc/latest/linux/oc.tar.gz"
             export AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
             ssh-keygen -t rsa -f /root/.ssh/id_rsa -q -P ""
             cp /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys
@@ -70,9 +72,11 @@ Resources:
             curl https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o awscliv2.zip
             unzip awscliv2.zip
             sudo ./aws/install && rm -rf aws* README*
-            curl -OL https://github.com/okd-project/okd/releases/download/4.17.0-okd-scos.0/openshift-install-linux-4.17.0-okd-scos.0.tar.gz
+            curl -OL $OKD
             tar -xzvf openshift-install-linux*.tar.gz;mv openshift-install /usr/local/bin/
-            USER=$(aws iam list-users --output text|awk '{print $7}')
+            curl -OL $OC
+            tar -xzvf oc*.tar.gz;mv oc /usr/local/bin;mv kubectl /usr/local/bin
+            USER=openshift
             CREDS=$(aws iam create-access-key --user-name $USER --output text)
             CREDS1=(echo $CREDS)
             echo "export AWS_REGION=$AWS_DEFAULT_REGION" >>/root/.bash_profile
