@@ -82,6 +82,44 @@ Resources:
             echo "export AWS_REGION=$AWS_DEFAULT_REGION" >>/root/.bash_profile
             echo "export AWS_ACCESS_KEY_ID=$(echo $CREDS|awk '{print $2}')" >>/root.bash_profile
             echo "export AWS_SECRET_ACCESS_KEY=$(echo $CREDS|awk '{print $4}')" >>/root/.bash_profile
+            cat >$HOME/install-config.yaml <<EOF
+            additionalTrustBundlePolicy: Proxyonly
+            apiVersion: v1
+            baseDomain: groofy.help
+            compute:
+            - architecture: amd64
+              hyperthreading: Enabled
+              name: worker
+              platform: {}
+              replicas: 2
+            controlPlane:
+              architecture: amd64
+              hyperthreading: Enabled
+              name: master
+              platform: {}
+              replicas: 3
+            metadata:
+              name: test
+            networking:
+              clusterNetwork:
+              - cidr: 10.128.0.0/14
+                hostPrefix: 23
+              machineNetwork:
+              - cidr: 10.0.0.0/16
+                networkType: OVNKubernetes
+              serviceNetwork:
+              - 172.30.0.0/16
+            platform:
+              aws:
+                region: us-east-1
+                vpc: {}
+            publish: External
+            pullSecret: '{"auths":{"cloud.openshift.com":{"auth":"b3BlbnNoaWZ0LXJlbGVhc2UtZGV2K29jbV9hY2Nlc3NfNTU0NGFiZTZkM2RmNDQ2OGE0MWQxM2YxMTAxMmM1NmM6S1dZUjhSVTlaRVoyRTExQkJTTTgxMDJRUVFHSjdRREpJWFM3WTc3VVE0UEhKWDhVN0ZRSUJCSDI2UlM3MzhaTw==","email":"d.udhayashankar@gmail.com"},"quay.io":{"auth":"b3BlbnNoaWZ0LXJlbGVhc2UtZGV2K29jbV9hY2Nlc3NfNTU0NGFiZTZkM2RmNDQ2OGE0MWQxM2YxMTAxMmM1NmM6S1dZUjhSVTlaRVoyRTExQkJTTTgxMDJRUVFHSjdRREpJWFM3WTc3VVE0UEhKWDhVN0ZRSUJCSDI2UlM3MzhaTw==","email":"d.udhayashankar@gmail.com"},"registry.connect.redhat.com":{"auth":"fHVoYy1wb29sLTgzMGIwYzJlLTcyYmEtNGYyNy05MzFlLTdlMzFlNWFkMDkxZTpleUpoYkdjaU9pSlNVelV4TWlKOS5leUp6ZFdJaU9pSTROVE0wT1RnNU5tRTFObUkwWkRNNFlUY3dOVGhpWmpJeU9ESmtPR1ZsTnlKOS5xTlU1am50NEFNWnFLbF9lTDRkUXNIOUJ5Z2JOZzMxdDNhTlA4QTNzWWt3WFVGT1pPTzhBc1BZNnRYRjctVmF2c3BHbEp0Yk1PNUxnRTU0WHBlOWEwazlDcTRuWkZIeGNqeTduLVppZUZYWURMVWxUNGh6SFhockJ4ZFJ3UXdFc0o2dDJKODhNa2c1N0NiaUhMY0dZSTRKLWtsSTU2ZE02ajJLNUJYdDVQdC1Qbk52ckVMWDlFYXZVa3hqb1kyZnpGRlVHb3FuSElLbEgyLTlyMVRhTkJybDg3dXlKaVpPakNmb240dUNTOWJJbjBNTHNxZlZGMGdnM0Z1YkU2cVJ6Z1pLdDJYOGVub01yelJ5TTZFc1FyVUJITldDR1BPSzNrOEpoa2VVengtRjBxNFZ1RVNFMURyRkozVzdpc1EzQUl6RUEyWnNpb3BZMTkwMlM2MU5QNDNYNGVBSllqTGYtSFlWTklYalhnSGU2SGlsclp6eGtjSzlMQmtFRUlTd054eHdyOUx4NUIxS0pOWDlRQ1QwdTF5UHU1TGFQYk10VlZZZ3gwelU4dFFvaGhVeUVmN05RQ1VmeTRkNXZ1ekc0Qnp3akhHRUlFTnY5VHQybEJxLWFQV0tFQVl0R1hJQU1rV0lCV0NaekpianJST0FSMmhqZGdEcmNZRnNvM2oycUlyQXJQdTRKQTUxdTB3WnQtazhZZ0R6dFRrazgzMmFXeGowZkV2VUx2LTh6OWZLSGJTWi12VmtscWxaMXRpYkppN1pZZWE0Y2lERHk4SGVhNzlZNVNIMFdyZmhkR19rMW04VDlCSDlPX1VsZGxpRnRfSUdmelNiZUtrS3paYi1ISXQwLTRUd3hXSmU2TnpueHNtSjJ2Sm9SNW9VOXliRVcxYVdXUlBaRlpmcw==","email":"d.udhayashankar@gmail.com"},"registry.redhat.io":{"auth":"fHVoYy1wb29sLTgzMGIwYzJlLTcyYmEtNGYyNy05MzFlLTdlMzFlNWFkMDkxZTpleUpoYkdjaU9pSlNVelV4TWlKOS5leUp6ZFdJaU9pSTROVE0wT1RnNU5tRTFObUkwWkRNNFlUY3dOVGhpWmpJeU9ESmtPR1ZsTnlKOS5xTlU1am50NEFNWnFLbF9lTDRkUXNIOUJ5Z2JOZzMxdDNhTlA4QTNzWWt3WFVGT1pPTzhBc1BZNnRYRjctVmF2c3BHbEp0Yk1PNUxnRTU0WHBlOWEwazlDcTRuWkZIeGNqeTduLVppZUZYWURMVWxUNGh6SFhockJ4ZFJ3UXdFc0o2dDJKODhNa2c1N0NiaUhMY0dZSTRKLWtsSTU2ZE02ajJLNUJYdDVQdC1Qbk52ckVMWDlFYXZVa3hqb1kyZnpGRlVHb3FuSElLbEgyLTlyMVRhTkJybDg3dXlKaVpPakNmb240dUNTOWJJbjBNTHNxZlZGMGdnM0Z1YkU2cVJ6Z1pLdDJYOGVub01yelJ5TTZFc1FyVUJITldDR1BPSzNrOEpoa2VVengtRjBxNFZ1RVNFMURyRkozVzdpc1EzQUl6RUEyWnNpb3BZMTkwMlM2MU5QNDNYNGVBSllqTGYtSFlWTklYalhnSGU2SGlsclp6eGtjSzlMQmtFRUlTd054eHdyOUx4NUIxS0pOWDlRQ1QwdTF5UHU1TGFQYk10VlZZZ3gwelU4dFFvaGhVeUVmN05RQ1VmeTRkNXZ1ekc0Qnp3akhHRUlFTnY5VHQybEJxLWFQV0tFQVl0R1hJQU1rV0lCV0NaekpianJST0FSMmhqZGdEcmNZRnNvM2oycUlyQXJQdTRKQTUxdTB3WnQtazhZZ0R6dFRrazgzMmFXeGowZkV2VUx2LTh6OWZLSGJTWi12VmtscWxaMXRpYkppN1pZZWE0Y2lERHk4SGVhNzlZNVNIMFdyZmhkR19rMW04VDlCSDlPX1VsZGxpRnRfSUdmelNiZUtrS3paYi1ISXQwLTRUd3hXSmU2TnpueHNtSjJ2Sm9SNW9VOXliRVcxYVdXUlBaRlpmcw==","email":"d.udhayashankar@gmail.com"}}}'
+            sshKey: |
+              $(cat $HOME/.ssh/id_rsa.pub)
+            EOF
+            mkdir $HOME/test;cp $HOME/install-config.yaml $HOME/test
+            openshift-install create cluster --dir=$HOME/test --log-level debug
             echo "********END TASK******************"
             
 
