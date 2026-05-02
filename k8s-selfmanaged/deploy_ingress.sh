@@ -19,9 +19,10 @@ spec:
 kubectl patch svc ingress-traefik --type merge --patch  "$(cat /tmp/spec.yaml)" -n ingress
 
 ## Update DNS Record
-KEY="LSA2GRkEwF7voysIuaisgwQ11Zc7uXzCaaJDrUXp";
-ZONE_ID="d8c45322d88ecc995996bda2ab7c1553";
-NAME="*.groofy.help";
+KEY="cfut_pv6Iw5cTfq7IHuOww2pJUvu0c2fHOnJBP84PHqy019baa0fc"
+ZONE_ID="55b113f292238697b00874ce460f220b"
+DOMAIN="groofy.xyz"
+NAME="*.$DOMAIN"
 SDNS_ID=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records?name=$NAME" \
 -H "Authorization: Bearer $KEY" \
 -H "Content-Type: application/json" \
@@ -29,7 +30,7 @@ SDNS_ID=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dn
 
 DNS_ID="$SDNS_ID";
 TYPE="A";
-NAME="*.groofy.help";
+NAME="*.$DOMAIN";
 CONTENT="$lbip";
 PROXIED="false";
 TTL="1";
@@ -42,4 +43,4 @@ curl -s -X PUT "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records/
 ## Deploy Sample application
 kubectl apply -f https://github.com/aws-containers/retail-store-sample-app/releases/latest/download/kubernetes.yaml
 kubectl wait --for=condition=available deployments --all
-kubectl create ing ing --rule="app.groofy.help/*=ui:80"
+kubectl create ing ing --rule="app.$DOMAIN/*=ui:80"
