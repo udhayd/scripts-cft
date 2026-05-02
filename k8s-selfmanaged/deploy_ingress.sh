@@ -27,7 +27,6 @@ kubectl patch svc ingress-traefik --type merge --patch  "$(cat /tmp/spec.yaml)" 
 ## Update DNS Record
 KEY="cfut_pv6Iw5cTfq7IHuOww2pJUvu0c2fHOnJBP84PHqy019baa0fc"
 ZONE_ID="55b113f292238697b00874ce460f220b"
-DOMAIN="groofy.xyz"
 NAME="*.$DOMAIN"
 SDNS_ID=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records?name=$NAME" \
 -H "Authorization: Bearer $KEY" \
