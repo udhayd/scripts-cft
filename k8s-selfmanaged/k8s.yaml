@@ -11,15 +11,15 @@ Parameters:
     Type: String
 
 
-Mappings: 
-  MInstanceMap: 
-    Instancetype: 
+Mappings:
+  MInstanceMap:
+    Instancetype:
       dev: "t2.small"
       test: "t2.micro"
       uat: "t2.medium"
       prod: "t2.large"
-  WInstanceMap: 
-    Instancetype: 
+  WInstanceMap:
+    Instancetype:
       dev: "t2.medium"
       test: "t2.small"
       uat: "t2.large"
@@ -66,7 +66,7 @@ Resources:
             set -o vi
             PS1=\$(hostname):'\$PWD# '
             export PS1
-            ssh-exec () 
+            ssh-exec ()
             {
             for i in master worker1 worker2;do  echo;echo "******\$i******";ssh -o StrictHostKeyChecking=no \$i \$@;echo "******************";done
             }
@@ -83,7 +83,8 @@ Resources:
             sed -i 's/master.*/&  master/' /tmp/$$
             sed -i 's/worker1.*/&  worker1/' /tmp/$$
             sed -i 's/worker2.*/&  worker2/' /tmp/$$
-            sed -i 's/nginx.*/&  loadbalancer/' /tmp/$$
+            sed -i 's/nginx-traefik.*/&  traefik-lb/' /tmp/$$
+            sed -i 's/nginx-istio.*/&  istio-lb/' /tmp/$$
             cat /tmp/$$|awk '{print $1, " " , $2," " , $5}' >>/etc/hosts
             echo "00 16 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
             systemctl restart crond
@@ -91,7 +92,7 @@ Resources:
             #sed -i -e 's/\r$//' /root/cluster_*.sh
             ssh-exec "tail -2 /root/bootstrap.log;cat /etc/hosts"
             echo "********END TASK******************"
-            
+
 
   Workernode1:
     Type: AWS::EC2::Instance
@@ -165,7 +166,7 @@ Resources:
             Encrypted: 'true'
       ImageId:
         Ref: ImageId
-      InstanceType: !FindInMap [WInstanceMap, Instancetype, dev] 
+      InstanceType: !FindInMap [WInstanceMap, Instancetype, dev]
       SecurityGroupIds:
         - Ref: K8SSecurityGroup
       SubnetId:
@@ -191,7 +192,7 @@ Resources:
             EOF
             AZ=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
             export AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
-            until aws ssm get-parameters --name master-${STK} --query 'Parameters[*].Value' --output text|grep ssh; do  sleep 10; done 
+            until aws ssm get-parameters --name master-${STK} --query 'Parameters[*].Value' --output text|grep ssh; do  sleep 10; done
             aws ssm get-parameters --name master-${STK} --query 'Parameters[*].Value' --output text >/root/.ssh/authorized_keys
             yum install ksh telnet -y
             for i in master worker1 worker2
@@ -209,7 +210,7 @@ Resources:
             echo "********END TASK******************"
 
 
-  nginxnode:
+  nginxnodetraefik:
     Type: AWS::EC2::Instance
     Properties:
       IamInstanceProfile:
@@ -223,7 +224,7 @@ Resources:
         Fn::ImportValue: PublicSubnet1ID
       Tags:
         - Key: Name
-          Value: !Sub nginx-${STK}
+          Value: !Sub nginx-traefik-${STK}
       UserData:
         Fn::Base64:
           Fn::Sub: |
@@ -231,8 +232,8 @@ Resources:
             set -x
             exec >/root/bootstrap.log 2>&1
             TOKEN=`curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600"`
-            hostname nginx-${STK}
-            echo nginx-${STK}  >/etc/hostname
+            hostname nginx-traefik-${STK}
+            echo nginx-traefik-${STK}  >/etc/hostname
             cat >>/root/.bash_profile <<EOF
             alias c=clear
             set -o vi
@@ -240,14 +241,14 @@ Resources:
             export PS1
             EOF
             yum install ksh telnet -y
-            
+
             #### Install and configure ngnix
             D=$(date +%Y-%m-%d)
             AZ=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
             AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
             export AWS_DEFAULT_REGION
             i=$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]'  --filters Name=instance-state-name,Values=running --output text|grep ${STK}|wc -l)
-            until [ $i == 4 ]
+            until [ $i == 5 ]
             do
               echo "Waiting for worker nodes to be created";
               sleep 3;
@@ -261,7 +262,7 @@ Resources:
             amazon-linux-extras install epel -y
             yum install nginx -y
             yum install nginx-mod-stream -y
-         
+
             #### Nginx Loadbalancer Configuration
             cd /etc/nginx/
             mv nginx.conf nginx.conf_org
@@ -281,7 +282,7 @@ Resources:
                    server $wrkr1:32080;
                    server $wrkr2:32080;
               }
- 
+
                upstream backend_443 {
                   least_conn;
                   server $wrkr1:32443;
@@ -318,7 +319,109 @@ Resources:
             service nginx status
             service nginx start
             systemctl enable nginx
-            pubip=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+            echo "00 16 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
+            systemctl restart crond
+            echo "********END TASK******************"
+
+  nginxnodeIstio:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile:
+        Ref: InstanceProfile
+      ImageId:
+        Ref: ImageId
+      InstanceType: !FindInMap [MInstanceMap, Instancetype, test]
+      SecurityGroupIds:
+        - Ref: LBSecurityGroup
+      SubnetId:
+        Fn::ImportValue: PublicSubnet1ID
+      Tags:
+        - Key: Name
+          Value: !Sub nginx-istio-${STK}
+      UserData:
+        Fn::Base64:
+          Fn::Sub: |
+            #!/bin/bash
+            set -x
+            exec >/root/bootstrap.log 2>&1
+            TOKEN=`curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600"`
+            hostname nginx-istio-${STK}
+            echo nginx-istio-${STK}  >/etc/hostname
+            cat >>/root/.bash_profile <<EOF
+            alias c=clear
+            set -o vi
+            PS1=\$(hostname):'\$PWD# '
+            export PS1
+            EOF
+            yum install ksh telnet -y
+
+            #### Install and configure ngnix
+            D=$(date +%Y-%m-%d)
+            AZ=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null)
+            AWS_DEFAULT_REGION=$(echo $AZ| sed 's/.$//g')
+            export AWS_DEFAULT_REGION
+            i=$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]'  --filters Name=instance-state-name,Values=running --output text|grep ${STK}|wc -l)
+            until [ $i == 5 ]
+            do
+              echo "Waiting for worker nodes to be created";
+              sleep 3;
+              i=$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --filters Name=instance-state-name,Values=running --output text|grep ${STK}|wc -l)
+            done
+            aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PrivateIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]' --filters Name=instance-state-name,Values=running --output text|column -t|grep $D|grep ${STK} >/tmp/$$
+            cat /tmp/$$|awk '{print $1, " " , $2}' >>/etc/hosts
+            wrkr2=$(grep worker2 /etc/hosts|awk '{print $1}')
+            wrkr1=$(grep worker1 /etc/hosts|awk '{print $1}')
+            mastr=$(grep master /etc/hosts|awk '{print $1}')
+            amazon-linux-extras install epel -y
+            yum install nginx -y
+            yum install nginx-mod-stream -y
+
+            #### Nginx Loadbalancer Configuration
+            cd /etc/nginx/
+            mv nginx.conf nginx.conf_org
+            cat >nginx.conf <<EOF
+            user nginx;
+            worker_processes auto;
+            error_log /var/log/nginx/error.log;
+            pid /run/nginx.pid;
+            # Load dynamic modules. See /usr/share/doc/nginx/README.dynamic.
+            include /usr/share/nginx/modules/*.conf;
+            events {
+            worker_connections 1024;
+            }
+            stream {
+               upstream backend_80 {
+                   least_conn;
+                   server $wrkr1:30080;
+                   server $wrkr2:30080;
+              }
+
+               upstream backend_443 {
+                  least_conn;
+                  server $wrkr1:30443;
+                  server $wrkr2:30443;
+              }
+
+
+               server {
+                  listen        80;
+                  proxy_pass    backend_80;
+                  proxy_timeout 3s;
+                  proxy_connect_timeout 1s;
+              }
+
+               server {
+                  listen        443;
+                  proxy_pass    backend_443;
+                  proxy_timeout 3s;
+                  proxy_connect_timeout 1s;
+              }
+
+            }
+            EOF
+            service nginx status
+            service nginx start
+            systemctl enable nginx
             echo "00 16 * * * /usr/sbin/poweroff" >>/var/spool/cron/root
             systemctl restart crond
             echo "********END TASK******************"
@@ -349,7 +452,7 @@ Resources:
         Description: "To Access Application in K8s cluster"
       - IpProtocol: TCP
         FromPort: 6443
-        ToPort: 6443  
+        ToPort: 6443
         CidrIp: 0.0.0.0/0
         Description: "To Access Kubeapi Server"
 
