@@ -59,4 +59,54 @@ curl -s -X PUT "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records/
 ## Deploy Sample application
 kubectl apply -f https://github.com/aws-containers/retail-store-sample-app/releases/latest/download/kubernetes.yaml
 kubectl wait --for=condition=available deployments --all
+
+## Configure ingress rule
 kubectl create ing ing --rule="app.$DOMAIN/*=ui:80"
+
+## Configure Virtualservice/Gateway
+kubectl get secret default-cert -n ingress -o yaml >/tmp/a.yaml
+sed -i 's/namespace: ingress/namespace: istio-gateways/g' /tmp/a.yaml
+sed -i 's/name: default-cert/name: istio-gateway-certs/g' /tmp/a.yaml
+sed -i 's/type: Opaque/type: kubernetes.io\/tls/g' /tmp/a.yaml
+cat >/tmp/vs.yaml <<EOF
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: app-gateway
+  namespace: istio-gateways
+spec:
+  # The selector matches the ingress gateway pod labels.
+  # If you installed Istio using Helm following the standard documentation, this would be "istio=ingress"
+  selector:
+    istio: gateway # use istio default controller
+  servers:
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: istio-gateway-certs
+    hosts:
+    - "app.istio.groofy.xyz"
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: app
+spec:
+  hosts:
+  - "app.istio.groofy.xyz"
+  gateways:
+  - istio-gateways/app-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: ui
+        port:
+          number: 80
+EOF
+kubectl apply -f /tmp/vs.yaml
