@@ -8,17 +8,24 @@ TOKEN=`curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metad
 export AWS_DEFAULT_REGION=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" -s http://169.254.169.254/latest/meta-data/placement/availability-zone | sed 's/\(.*\)[a-z]/\1/')
 alias python=/usr/bin/python3
 
+## Install helm
+curl -s https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3|bash
+
 ## Deploy kubernetes metrics server
 helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
 helm install metrics-server metrics-server/metrics-server --set args[0]="--kubelet-insecure-tls" -n kube-system
 
+## Deploy Istio service mesh
+helm repo add istio https://istio-release.storage.googleapis.com/charts
+helm repo update
+helm install istio-base istio/base -n istio-system --set defaultRevision=default --create-namespace
+helm install istiod istio/istiod -n istio-system
+helm install istio-gateway istio/gateway -n istio-gateways --create-namespace
+
 ## Deploy Ingress controller
-curl -s https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3|bash
-kubectl create ns ingress
 git clone https://github.com/udhayd/traefik
-cd traefik/chart/
-helm dep update
-helm install ingress . -n ingress
+cd traefik/chart/;helm dep update
+helm install ingress . -n ingress --create-namespace
 
 ## Update Ingress service
 lbip=$(aws ec2 describe-instances --query 'Reservations[*].Instances[*].[PublicIpAddress,Tags[?Key==`Name`].Value|[0],LaunchTime,State.Name]'  --filters Name=instance-state-name,Values=running  --output text|column -t|grep nginx-traefik|awk '{print $1}')
