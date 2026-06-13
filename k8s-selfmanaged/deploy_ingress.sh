@@ -8,6 +8,10 @@ TOKEN=`curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metad
 export AWS_DEFAULT_REGION=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" -s http://169.254.169.254/latest/meta-data/placement/availability-zone | sed 's/\(.*\)[a-z]/\1/')
 alias python=/usr/bin/python3
 
+## Deploy kubernetes metrics server
+helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
+helm install metrics-server metrics-server/metrics-server --set args[0]="--kubelet-insecure-tls" -n kube-system
+
 ## Deploy Ingress controller
 curl -s https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3|bash
 kubectl create ns ingress
