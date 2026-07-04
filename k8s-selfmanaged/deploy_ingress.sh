@@ -120,6 +120,7 @@ kubectl get secret default-cert -n ingress -o yaml >/tmp/a.yaml
 sed -i 's/namespace: ingress/namespace: istio-gateways/g' /tmp/a.yaml
 sed -i 's/name: default-cert/name: istio-gateway-certs/g' /tmp/a.yaml
 sed -i 's/type: Opaque/type: kubernetes.io\/tls/g' /tmp/a.yaml
+kubectl apply -f /tmp/a.yaml
 cat >/tmp/vs.yaml <<EOF
 apiVersion: networking.istio.io/v1
 kind: Gateway
