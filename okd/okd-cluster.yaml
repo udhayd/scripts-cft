@@ -1,0 +1,361 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: To Create OpenShift Cluster UPI - (LBs,SG,EC2 nodes (bootstrap, masters, workers))
+
+Parameters:
+  ClusterName:
+    Type: String
+    Default: test
+  BaseDomain:
+    Type: String
+    Default: groofy.xyz
+
+  SCOSAMI:
+    Type: AWS::EC2::Image::Id
+    Description: SCOS AMI ID for this region
+    Default: "ami-06c6005cd77ed72cf"
+
+  MasterInstanceType:
+    Type: String
+    Default: t2.medium
+  WorkerInstanceType:
+    Type: String
+    Default: t2.medium
+  BootstrapInstanceType:
+    Type: String
+    Default: t2.small
+
+  IgnitionBucket:
+    Type: String
+    Description: S3 bucket containing ignition files
+    Default: "openshift-install-test"
+  BootstrapIgnitionKey:
+    Type: String
+    Default: bootstrap.ign
+  MasterIgnitionKey:
+    Type: String
+    Default: master.ign
+  WorkerIgnitionKey:
+    Type: String
+    Default: worker.ign
+
+Resources:
+
+  # ---------------- Security Group ----------------
+
+  ClusterSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: OpenShift cluster SG
+      VpcId:
+        Fn::ImportValue: MyVPCID
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 6443
+          ToPort: 6443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22623
+          ToPort: 22623
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub '${ClusterName}-sg'
+
+  SGIngressRule:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref ClusterSecurityGroup
+      IpProtocol: -1
+      SourceSecurityGroupId: !GetAtt ClusterSecurityGroup.GroupId
+
+
+  # ---------------- Load Balancers ----------------
+
+  ApiNLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub 'api-${ClusterName}'
+      Type: network
+      Subnets:
+        - Fn::ImportValue: PublicSubnet1ID
+        - Fn::ImportValue: PublicSubnet2ID
+      Scheme: internet-facing
+
+  ApiTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub 'api-${ClusterName}-tg'
+      Port: 6443
+      Protocol: TCP
+      Targets:
+        - Id: !GetAtt Master1Instance.PrivateIp
+          Port: 6443
+        - Id: !GetAtt Master2Instance.PrivateIp
+          Port: 6443
+        - Id: !GetAtt Master3Instance.PrivateIp
+          Port: 6443
+        - Id: !GetAtt BootstrapInstance.PrivateIp
+          Port: 6443
+      TargetType: ip
+      VpcId: 
+        Fn::ImportValue: MyVPCID
+      HealthCheckProtocol: TCP
+      HealthCheckPort: '6443'
+
+  ApiListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApiNLB
+      Port: 6443
+      Protocol: TCP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ApiTargetGroup
+
+  ApiTargetGroup2:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub 'api-int-${ClusterName}-tg'
+      Port: 22623
+      Protocol: TCP
+      Targets:
+        - Id: !GetAtt Master1Instance.PrivateIp
+          Port: 22623
+        - Id: !GetAtt Master2Instance.PrivateIp
+          Port: 22623
+        - Id: !GetAtt Master3Instance.PrivateIp
+          Port: 22623
+        - Id: !GetAtt BootstrapInstance.PrivateIp
+          Port: 22623
+      TargetType: ip
+      VpcId:
+        Fn::ImportValue: MyVPCID
+      HealthCheckProtocol: TCP
+      HealthCheckPort: '22623'
+
+  ApiListener2:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApiNLB
+      Port: 22623
+      Protocol: TCP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ApiTargetGroup2
+
+
+  IngressNLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub 'apps-${ClusterName}'
+      Type: network
+      Subnets:
+        - Fn::ImportValue: PublicSubnet1ID
+        - Fn::ImportValue: PublicSubnet2ID
+      Scheme: internet-facing
+
+  IngressTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub 'apps-${ClusterName}-tg'
+      Port: 80
+      Protocol: TCP
+      TargetType: instance
+      VpcId:
+        Fn::ImportValue: MyVPCID
+      HealthCheckProtocol: TCP
+      HealthCheckPort: '80'
+
+  IngressListener80:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref IngressNLB
+      Port: 80
+      Protocol: TCP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref IngressTargetGroup
+
+  IngressListener443:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref IngressNLB
+      Port: 443
+      Protocol: TCP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref IngressTargetGroup
+
+
+  # ---------------- DNS Records ----------------
+            
+  apirecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !ImportValue HOSTEDZONE
+      Name: !Sub 'api.${ClusterName}.${BaseDomain}'
+      Type: A       
+      AliasTarget: 
+        DNSName: !GetAtt ApiNLB.DNSName
+        HostedZoneId: !GetAtt ApiNLB.CanonicalHostedZoneID
+
+  apiintrecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !ImportValue HOSTEDZONE
+      Name: !Sub 'api-int.${ClusterName}.${BaseDomain}'
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ApiNLB.DNSName
+        HostedZoneId: !GetAtt ApiNLB.CanonicalHostedZoneID
+
+
+  # ---------------- IAM Role for nodes ----------------
+
+  NodeInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-node-role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+
+  NodeInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub "${AWS::StackName}-node-role"
+      Roles:
+        - !Ref NodeInstanceRole
+
+  # ---------------- Launch Templates ----------------
+
+  BootstrapLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub '${ClusterName}-bootstrap-lt'
+      LaunchTemplateData:
+        ImageId: !Ref SCOSAMI
+        InstanceType: !Ref BootstrapInstanceType
+        IamInstanceProfile:
+          Name: !Ref NodeInstanceProfile
+        NetworkInterfaces:
+          - DeviceIndex: 0
+            SubnetId: 
+              Fn::ImportValue: PublicSubnet2ID
+            AssociatePublicIpAddress: true
+            Groups:
+            - !Ref ClusterSecurityGroup
+        UserData:
+          Fn::Base64: !Sub |
+            {"ignition":{"config":{"replace":{"source":"https://${IgnitionBucket}.s3.${AWS::Region}.amazonaws.com/${BootstrapIgnitionKey}"}},"version":"3.2.0"}}
+              
+  MasterLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub '${ClusterName}-master-lt'
+      LaunchTemplateData:
+        ImageId: !Ref SCOSAMI
+        InstanceType: !Ref MasterInstanceType
+        IamInstanceProfile:
+          Name: !Ref NodeInstanceProfile
+        NetworkInterfaces:
+          - DeviceIndex: 0
+            SubnetId: 
+              Fn::ImportValue: PublicSubnet2ID
+            AssociatePublicIpAddress: true
+            Groups:
+            - !Ref ClusterSecurityGroup
+        UserData:
+          Fn::Base64: !Sub |
+            {"ignition":{"config":{"replace":{"source":"https://${IgnitionBucket}.s3.${AWS::Region}.amazonaws.com/${MasterIgnitionKey}"}},"version":"3.2.0"}}
+
+  WorkerLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub '${ClusterName}-worker-lt'
+      LaunchTemplateData:
+        ImageId: !Ref SCOSAMI
+        InstanceType: !Ref WorkerInstanceType
+        IamInstanceProfile:
+          Name: !Ref NodeInstanceProfile
+        NetworkInterfaces:
+          - DeviceIndex: 0
+            SubnetId:
+              Fn::ImportValue: PublicSubnet2ID
+            AssociatePublicIpAddress: true
+            Groups:
+            - !Ref ClusterSecurityGroup
+        UserData:
+          Fn::Base64: !Sub |
+            {"ignition":{"config":{"replace":{"source":"https://${IgnitionBucket}.s3.${AWS::Region}.amazonaws.com/${WorkerIgnitionKey}"}},"version":"3.2.0"}}
+
+  # ---------------- EC2 Instances ----------------
+
+  BootstrapInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref BootstrapLaunchTemplate
+        Version: 1
+      Tags:
+        - Key: Name
+          Value: !Sub '${ClusterName}-bootstrap'
+
+  Master1Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref MasterLaunchTemplate
+        Version: 1
+      Tags:
+        - Key: Name
+          Value: !Sub '${ClusterName}-master-1'
+
+  Master2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref MasterLaunchTemplate
+        Version: 1
+      Tags:
+        - Key: Name
+          Value: !Sub '${ClusterName}-master-2'
+
+  Master3Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref MasterLaunchTemplate
+        Version: 1
+      Tags:
+        - Key: Name
+          Value: !Sub '${ClusterName}-master-3'
+
+  Worker1Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref WorkerLaunchTemplate
+        Version: 1
+      Tags:
+        - Key: Name
+          Value: !Sub '${ClusterName}-worker-1'
+
